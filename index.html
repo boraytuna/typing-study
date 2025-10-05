@@ -1,12 +1,245 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Typing Study</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Study — Minimal Prototype</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 720px; margin: 24px auto; line-height: 1.45; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    .muted { color: #666; font-size: 0.9rem; margin-top: 0; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin: 16px 0; }
+    .hidden { display: none; }
+    textarea { width: 100%; min-height: 120px; font-size: 1rem; }
+    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row > * { flex: 1; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
 </head>
 <body>
-  <h1>Typing Study – Coming Soon</h1>
-  <p>This page will host the typing-speed research website for CS-258.</p>
+  <h1>Typing Study — Minimal Prototype</h1>
+  <p class="muted">One page, one sentence. We’ll expand after we verify the flow.</p>
+
+  <!-- Section 1: Consent + Start -->
+  <section id="s-consent" class="card">
+    <h2>Consent</h2>
+    <p>This prototype records timing for a single sentence. No personal info is collected.</p>
+    <label><input id="agree" type="checkbox" /> I am 18–22 or 40–55 and I consent.</label>
+    <div class="row" style="margin-top: 12px;">
+      <select id="ageGroup">
+        <option value="">Age group…</option>
+        <option>18–22</option>
+        <option>40–55</option>
+      </select>
+      <button id="btnStart" disabled>Start</button>
+    </div>
+    <p id="startInfo" class="mono"></p>
+  </section>
+
+  <!-- Section 2: Trial -->
+  <section id="s-trial" class="card hidden">
+    <h2>Type Exactly What You See</h2>
+    <p id="sentence" class="mono"></p>
+    <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="Type the sentence here. Press Enter to submit."></textarea>
+    <div class="row" style="margin-top: 8px;">
+      <button id="btnSubmit" disabled>Submit (Enter)</button>
+      <div id="timer" class="mono" style="text-align:right;">0 ms</div>
+    </div>
+    <p id="help" class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
+  </section>
+
+  <!-- Section 3: Done -->
+  <section id="s-done" class="card hidden">
+    <h2>Done ✅</h2>
+    <p>Thanks! Data sent. Your participant ID:</p>
+    <p class="mono" id="pidOut"></p>
+    <p class="muted">We’ll extend this to multiple sentences and the phone/laptop flow next.</p>
+  </section>
+
+  <script>
+    // 👉 CONFIG: put YOUR endpoint + secret here (this will be visible client-side; OK for this class project)
+    const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
+    const SECRET   = "h33iy43brfu3hf93fhb3fi3ivh3v";
+
+    // One demo sentence (we’ll load your full set later)
+    const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
+
+    // DOM
+    const sConsent = document.getElementById("s-consent");
+    const sTrial   = document.getElementById("s-trial");
+    const sDone    = document.getElementById("s-done");
+    const agree    = document.getElementById("agree");
+    const btnStart = document.getElementById("btnStart");
+    const ageGroup = document.getElementById("ageGroup");
+    const sentence = document.getElementById("sentence");
+    const input    = document.getElementById("input");
+    const btnSubmit= document.getElementById("btnSubmit");
+    const timerEl  = document.getElementById("timer");
+    const pidOut   = document.getElementById("pidOut");
+    const startInfo= document.getElementById("startInfo");
+
+    // State
+    let pid = null;
+    let t0 = 0;
+    let keystrokes = [];
+    let backspaces = 0;
+    let paused500 = 0;
+    let lastT = 0;
+
+    // Helpers
+    const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const show = (el) => el.classList.remove("hidden");
+    const hide = (el) => el.classList.add("hidden");
+    const ms = () => performance.now();
+
+    // Enable Start when consent + age chosen
+    agree.addEventListener("change", () => { btnStart.disabled = !(agree.checked && ageGroup.value); });
+    ageGroup.addEventListener("change", () => { btnStart.disabled = !(agree.checked && ageGroup.value); });
+
+    btnStart.addEventListener("click", async () => {
+      // PID from URL (?pid=...) or create new
+      const pidFromUrl = new URLSearchParams(location.search).get("pid");
+      pid = pidFromUrl || localStorage.getItem("ts_pid") || uuid();
+      localStorage.setItem("ts_pid", pid);
+
+      // Send participant_start
+      try {
+        await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" }, // CORS-simple
+          body: JSON.stringify({
+            secret: SECRET,
+            type: "participant_start",
+            pid,
+            age_group: ageGroup.value,
+            device_order: "Laptop→Phone", // placeholder; we’ll randomize later
+            consent_version: "v1",
+            start_iso: new Date().toISOString()
+          })
+        }).then(r => r.json());
+      } catch(e) { console.warn("participant_start failed", e); }
+
+      startInfo.textContent = `PID: ${pid}`;
+      // Move to trial
+      hide(sConsent); show(sTrial);
+      setupTrial();
+    });
+
+    function setupTrial() {
+      sentence.textContent = TEST_SENTENCE;
+      input.value = "";
+      input.focus();
+      keystrokes = [];
+      backspaces = 0;
+      paused500 = 0;
+      t0 = ms();
+      lastT = t0;
+
+      // Timer display
+      const tick = () => { timerEl.textContent = `${Math.round(ms() - t0)} ms`; if(!sTrial.classList.contains("hidden")) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+
+      // Keystroke capture (simple)
+      input.addEventListener("keydown", onKeydown);
+      input.addEventListener("input", onInput);
+      input.addEventListener("paste", e => e.preventDefault());
+      input.addEventListener("blur", ()=>{}); // placeholder for focus-blur count
+
+      // Enable submit when text matches exactly
+      input.addEventListener("input", () => {
+        btnSubmit.disabled = (input.value !== TEST_SENTENCE);
+      });
+
+      // Submit by Enter too
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!btnSubmit.disabled) btnSubmit.click();
+        }
+      });
+
+      btnSubmit.addEventListener("click", submitTrial, { once: true });
+    }
+
+    function onKeydown(e) {
+      const t = ms();
+      if (t - lastT >= 500) paused500++;  // simple pause >= 500ms
+      lastT = t;
+      if (e.key === "Backspace") backspaces++;
+      keystrokes.push({ t_ms: Math.round(t - t0), type: "keydown", key: e.key });
+    }
+
+    function onInput(e) {
+      const t = ms();
+      if (t - lastT >= 500) paused500++;
+      lastT = t;
+      keystrokes.push({ t_ms: Math.round(t - t0), type: "input", value_len: input.value.length });
+    }
+
+    async function submitTrial() {
+      const end = ms();
+      const total = Math.round(end - t0);
+
+      // Compute crude interkey stats from input events (prototype)
+      const deltas = [];
+      for (let i = 1; i < keystrokes.length; i++) {
+        deltas.push(keystrokes[i].t_ms - keystrokes[i-1].t_ms);
+      }
+      const meanInter = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length) : 0;
+      const p95Inter = deltas.length ? Math.round(deltas.sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
+
+      // POST trial_summary (text/plain to avoid preflight)
+      const payload = {
+        secret: SECRET,
+        type: "trial_summary",
+        pid,
+        trial_id: "T1",
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "phone" : "laptop",
+        sentence_id: "S1",
+        order_in_block: 1,
+        start_ms: 0,
+        end_ms: total,
+        total_ms: total,
+        mean_interkey_ms: meanInter,
+        p95_interkey_ms: p95Inter,
+        pause500_count: paused500,
+        backspace_count: backspaces,
+        ua: navigator.userAgent,
+        os: "unknown",
+        browser: "unknown",
+        screen_w: window.screen.width,
+        screen_h: window.screen.height,
+        dpr: window.devicePixelRatio,
+        paste_attempted: false,
+        focus_blur_count: 0,
+        flags: "proto-v1"
+      };
+
+      let ok = false;
+      try {
+        const res = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify(payload)
+        }).then(r => r.json());
+        ok = !!res?.ok;
+      } catch(e) { console.error(e); }
+
+      // End participant
+      try {
+        await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ secret: SECRET, type: "participant_end", pid, end_iso: new Date().toISOString() })
+        });
+      } catch(e) {}
+
+      hide(sTrial); show(sDone);
+      pidOut.textContent = pid + (ok ? "" : " (send failed — check Console)");
+    }
+  </script>
 </body>
 </html>
