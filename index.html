@@ -1,24 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Typing Study — Minimal Prototype</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 720px; margin: 24px auto; line-height: 1.45; }
-    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-    .muted { color: #666; font-size: 0.9rem; margin-top: 0; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin: 16px 0; }
-    .hidden { display: none; }
-    textarea { width: 100%; min-height: 120px; font-size: 1rem; }
-    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .row { display: flex; gap: 8px; align-items: center; }
-    .row > * { flex: 1; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .status { font-size: .95rem; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      max-width: 720px;
+      margin: 24px auto;
+      line-height: 1.45;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 0.9rem;
+      margin-top: 0;
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 16px;
+      margin: 16px 0;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      font-size: 1rem;
+    }
+
+    button {
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: #f7f7f7;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .row>* {
+      flex: 1;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .status {
+      font-size: .95rem;
+    }
   </style>
 </head>
+
 <body>
   <h1>Typing Study — Minimal Prototype</h1>
   <p class="muted">One page, one sentence. We’ll expand after verifying the full flow.</p>
@@ -57,7 +112,7 @@
     <h2>Type Exactly What You See</h2>
     <p id="sentence" class="mono"></p>
     <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-              placeholder="Type the sentence here. Auto-submits when it matches exactly."></textarea>
+      placeholder="Type the sentence here. Auto-submits when it matches exactly."></textarea>
     <div class="row" style="margin-top: 8px;">
       <button id="btnSubmit" disabled>Submit (auto / Enter)</button>
       <div id="timer" class="mono" style="text-align:right;">0 ms</div>
@@ -86,7 +141,7 @@
   <script>
     /********** CONFIG **********/
     const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
-    const SECRET   = "h33iy43brfu3hf93fhb3fi3ivh3v";
+    const SECRET = "h33iy43brfu3hf93fhb3fi3ivh3v";
     const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
 
     /********** ENV & HELPERS **********/
@@ -99,18 +154,18 @@
     const ms = () => performance.now();
     const parseOrder = s => (s || "").split("→"); // ["phone","laptop"]
     const qs = new URLSearchParams(location.search);
-    const urlPhase = (qs.get("phase")==="2"?2:1);
+    const urlPhase = (qs.get("phase") === "2" ? 2 : 1);
     const makeUrl = (pid, order, phase) => location.origin + location.pathname +
-        "?pid=" + encodeURIComponent(pid) +
-        (order ? "&order=" + encodeURIComponent(order) : "") +
-        (phase ? "&phase=" + phase : "");
+      "?pid=" + encodeURIComponent(pid) +
+      (order ? "&order=" + encodeURIComponent(order) : "") +
+      (phase ? "&phase=" + phase : "");
 
     // DOM
     const sConsent = document.getElementById("s-consent");
     const sSwitch1 = document.getElementById("s-switch1");
     const sSwitch2 = document.getElementById("s-switch2");
-    const sTrial   = document.getElementById("s-trial");
-    const sDone    = document.getElementById("s-done");
+    const sTrial = document.getElementById("s-trial");
+    const sDone = document.getElementById("s-done");
     const agree = document.getElementById("agree");
     const ageGroup = document.getElementById("ageGroup");
     const btnStart = document.getElementById("btnStart");
@@ -130,6 +185,15 @@
     const pidOut = document.getElementById("pidOut");
     const trialStatus = document.getElementById("trialStatus");
 
+    if (qs.get('reset') === '1') {
+      const oldPid = localStorage.getItem('ts_pid');
+      if (oldPid) localStorage.removeItem(`ts_started_${oldPid}`);
+      localStorage.removeItem('ts_pid');
+      localStorage.removeItem('ts_device_order');
+      localStorage.removeItem('ts_state');
+      location.replace(location.pathname); // reload without query
+    }
+
     // State
     let pid = null;
     let deviceOrder = null;
@@ -141,7 +205,7 @@
     const setState = (s) => localStorage.setItem("ts_state", s);
     const getState = () => localStorage.getItem("ts_state") || "consent";
 
-    function updateStartBtn(){ btnStart.disabled = !(agree.checked && ageGroup.value); }
+    function updateStartBtn() { btnStart.disabled = !(agree.checked && ageGroup.value); }
     agree.addEventListener("change", updateStartBtn);
     ageGroup.addEventListener("change", updateStartBtn);
 
@@ -156,7 +220,7 @@
     });
 
     // Adopt ?pid&order on any device
-    (function adoptFromUrl(){
+    (function adoptFromUrl() {
       const pidQ = qs.get("pid");
       const orderQ = qs.get("order");
       if (pidQ) { pid = pidQ; localStorage.setItem("ts_pid", pid); }
@@ -164,13 +228,23 @@
     })();
 
     // Restore UI on refresh
-    (function restore(){
+    (function restore() {
       pid = pid || localStorage.getItem("ts_pid") || null;
       deviceOrder = deviceOrder || localStorage.getItem("ts_device_order") || null;
-      const state = getState();
+
+      const state = localStorage.getItem("ts_state") || "consent";
+      const [firstDev, secondDev] = (deviceOrder || "").split("→");
+
+      // If URL says phase 2 and we are on the second device, allow trial immediately
+      if (urlPhase === 2 && secondDev && DEVICE_NOW === secondDev) {
+        hide(sConsent); show(sTrial);
+        localStorage.setItem("ts_state", "trial");
+        setupTrial();
+        return;
+      }
 
       if (state === "switch1") {
-        const [firstDev] = parseOrder(deviceOrder||"");
+        const [firstDev] = parseOrder(deviceOrder || "");
         if (firstDev && firstDev !== DEVICE_NOW) {
           const url = makeUrl(pid, deviceOrder, 1);
           hide(sConsent); show(sSwitch1);
@@ -181,7 +255,7 @@
       } else if (state === "trial") {
         hide(sConsent); show(sTrial); setupTrial();
       } else if (state === "switch2") {
-        const [, secondDev] = parseOrder(deviceOrder||"");
+        const [, secondDev] = parseOrder(deviceOrder || "");
         const url = makeUrl(pid, deviceOrder, 2);
         hide(sConsent); show(sSwitch2);
         switchMsg2.textContent = `Great! Now continue on your ${secondDev} to finish.`;
@@ -208,20 +282,33 @@
 
       startInfo.textContent = `PID: ${pid} • Assigned order: ${deviceOrder}`;
 
-      // Only post participant_start once per PID
+      // Only send participant_start once per PID
       const startedKey = `ts_started_${pid}`;
       if (!localStorage.getItem(startedKey)) {
         try {
-          await fetch(ENDPOINT, {
-            method: "POST", headers: { "Content-Type": "text/plain" },
+          const res = await fetch(ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({
-              secret: SECRET, type: "participant_start",
-              pid, age_group: ageGroup.value, device_order: deviceOrder,
-              consent_version: "v1", start_iso: new Date().toISOString()
+              secret: SECRET,
+              type: "participant_start",
+              pid,
+              age_group: ageGroup.value,
+              device_order: deviceOrder,
+              consent_version: "v1",
+              start_iso: new Date().toISOString()
             })
-          });
+          }).then(r => r.json());
+
+          if (res && res.ok === false && /completed/i.test(res.error || "")) {
+            startStatus.textContent = "This participant ID is already completed. Click “New participant (reset)” to start a new one.";
+            btnStart.disabled = false;
+            btnStart.textContent = "Start";
+            return; // stop the flow
+          }
+
           localStorage.setItem(startedKey, "1");
-        } catch(e){ console.warn("participant_start failed", e); }
+        } catch (e) { console.warn("participant_start failed", e); }
       }
 
       const [firstDev, secondDev] = parseOrder(deviceOrder);
@@ -270,8 +357,8 @@
       }; requestAnimationFrame(tick);
 
       input.onkeydown = onKeydown;
-      input.oninput  = onInput;
-      input.onpaste  = e => e.preventDefault();
+      input.oninput = onInput;
+      input.onpaste = e => e.preventDefault();
 
       input.addEventListener("input", () => {
         const match = (input.value === TEST_SENTENCE);
@@ -288,42 +375,44 @@
       });
     }
 
-    function stampStartIfNeeded(){ if (!started) { started = true; t0 = ms(); lastT = t0; } }
-    function onKeydown(e){ stampStartIfNeeded(); const t=ms(); if (t-lastT>=500) paused500++; lastT=t; if (e.key==="Backspace") backspaces++; keystrokes.push({event_seq:keystrokes.length+1,t_ms:Math.round(t-t0),event_type:"keydown",key:e.key,value_len:input.value.length,cursor_pos:input.selectionStart,is_mobile:IS_MOBILE}); }
-    function onInput(e){ stampStartIfNeeded(); const t=ms(); if (t-lastT>=500) paused500++; lastT=t; keystrokes.push({event_seq:keystrokes.length+1,t_ms:Math.round(t-t0),event_type:"input",key:"",value_len:input.value.length,cursor_pos:input.selectionStart,is_mobile:IS_MOBILE}); }
+    function stampStartIfNeeded() { if (!started) { started = true; t0 = ms(); lastT = t0; } }
+    function onKeydown(e) { stampStartIfNeeded(); const t = ms(); if (t - lastT >= 500) paused500++; lastT = t; if (e.key === "Backspace") backspaces++; keystrokes.push({ event_seq: keystrokes.length + 1, t_ms: Math.round(t - t0), event_type: "keydown", key: e.key, value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE }); }
+    function onInput(e) { stampStartIfNeeded(); const t = ms(); if (t - lastT >= 500) paused500++; lastT = t; keystrokes.push({ event_seq: keystrokes.length + 1, t_ms: Math.round(t - t0), event_type: "input", key: "", value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE }); }
 
     async function submitTrial() {
       btnSubmit.disabled = true;
       const total = started ? Math.round(ms() - t0) : 0;
-      const deltas=[]; for (let i=1;i<keystrokes.length;i++) deltas.push(keystrokes[i].t_ms-keystrokes[i-1].t_ms);
-      const meanInter = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length) : 0;
-      const p95Inter  = deltas.length ? Math.round(deltas.slice().sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
+      const deltas = []; for (let i = 1; i < keystrokes.length; i++) deltas.push(keystrokes[i].t_ms - keystrokes[i - 1].t_ms);
+      const meanInter = deltas.length ? Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length) : 0;
+      const p95Inter = deltas.length ? Math.round(deltas.slice().sort((a, b) => a - b)[Math.floor(0.95 * (deltas.length - 1))]) : 0;
 
       // trial_summary
       try {
-        await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
+        await fetch(ENDPOINT, {
+          method: "POST", headers: { "Content-Type": "text/plain" },
           body: JSON.stringify({
-            secret: SECRET, type:"trial_summary", pid,
-            trial_id: (urlPhase===1?"T1A":"T1B"),
-            device: DEVICE_NOW, sentence_id: "S1", order_in_block: (urlPhase===1?1:2),
+            secret: SECRET, type: "trial_summary", pid,
+            trial_id: (urlPhase === 1 ? "T1A" : "T1B"),
+            device: DEVICE_NOW, sentence_id: "S1", order_in_block: (urlPhase === 1 ? 1 : 2),
             start_ms: 0, end_ms: total, total_ms: total,
             mean_interkey_ms: meanInter, p95_interkey_ms: p95Inter,
             pause500_count: paused500, backspace_count: backspaces,
-            ua: navigator.userAgent, os:"unknown", browser:"unknown",
+            ua: navigator.userAgent, os: "unknown", browser: "unknown",
             screen_w: screen.width, screen_h: screen.height, dpr: devicePixelRatio,
-            paste_attempted:false, focus_blur_count:0, flags: "proto-v4"
+            paste_attempted: false, focus_blur_count: 0, flags: "proto-v4"
           })
-        }).then(r=>r.json());
-      } catch(e){ console.error(e); }
+        }).then(r => r.json());
+      } catch (e) { console.error(e); }
 
       // raw keystrokes
       try {
-        await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
-          body: JSON.stringify({ secret: SECRET, type: "keystrokes_batch", pid, trial_id: (urlPhase===1?"T1A":"T1B"), events: keystrokes })
+        await fetch(ENDPOINT, {
+          method: "POST", headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ secret: SECRET, type: "keystrokes_batch", pid, trial_id: (urlPhase === 1 ? "T1A" : "T1B"), events: keystrokes })
         });
-      } catch(e){}
+      } catch (e) { }
 
-      const [firstDev, secondDev] = parseOrder(localStorage.getItem("ts_device_order")||deviceOrder||"");
+      const [firstDev, secondDev] = parseOrder(localStorage.getItem("ts_device_order") || deviceOrder || "");
 
       if (urlPhase === 1) {
         // show handoff to phase 2 (second device). Do NOT end participant yet.
@@ -336,10 +425,11 @@
       } else {
         // phase 2 completes the participant
         try {
-          await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
+          await fetch(ENDPOINT, {
+            method: "POST", headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({ secret: SECRET, type: "participant_end", pid, end_iso: new Date().toISOString() })
           });
-        } catch(e){}
+        } catch (e) { }
         // clear local storage for device sharing
         localStorage.removeItem("ts_pid");
         localStorage.removeItem("ts_device_order");
@@ -349,4 +439,5 @@
     }
   </script>
 </body>
+
 </html>
