@@ -43,15 +43,13 @@
     <p id="startInfo" class="mono"></p>
   </section>
 
-  <!-- Section 1.5: Switch Device -->
-  <section id="s-switch" class="card hidden">
+  <!-- Section 1.5: Switch Device (Phase 1) -->
+  <section id="s-switch1" class="card hidden">
     <h2>Start on your other device</h2>
-    <p id="switchMsg"></p>
+    <p id="switchMsg1"></p>
     <p>Open this link on your other device to continue:</p>
-    <p class="mono" id="continueLink"></p>
-    <div id="qrWrap" style="margin-top:10px;">
-      <img id="qr" alt="QR code" />
-    </div>
+    <p class="mono" id="continueLink1"></p>
+    <div style="margin-top:10px;"><img id="qr1" alt="QR code to continue" /></div>
   </section>
 
   <!-- Section 2: Trial -->
@@ -59,13 +57,22 @@
     <h2>Type Exactly What You See</h2>
     <p id="sentence" class="mono"></p>
     <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-              placeholder="Type the sentence here. It will submit automatically when it matches exactly."></textarea>
+              placeholder="Type the sentence here. Auto-submits when it matches exactly."></textarea>
     <div class="row" style="margin-top: 8px;">
       <button id="btnSubmit" disabled>Submit (auto / Enter)</button>
       <div id="timer" class="mono" style="text-align:right;">0 ms</div>
     </div>
     <p id="help" class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
     <div id="trialStatus" class="status mono"></div>
+  </section>
+
+  <!-- Section 2.5: Handoff to second device (after first device finishes) -->
+  <section id="s-switch2" class="card hidden">
+    <h2>Continue on your other device</h2>
+    <p id="switchMsg2"></p>
+    <p>Open this link on your other device to finish:</p>
+    <p class="mono" id="continueLink2"></p>
+    <div style="margin-top:10px;"><img id="qr2" alt="QR code for phase 2" /></div>
   </section>
 
   <!-- Section 3: Done -->
@@ -91,11 +98,17 @@
     const hide = (el) => el.classList.add("hidden");
     const ms = () => performance.now();
     const parseOrder = s => (s || "").split("→"); // ["phone","laptop"]
-    const makeUrl = (pid, order) => location.origin + location.pathname + "?pid=" + encodeURIComponent(pid) + (order ? "&order=" + encodeURIComponent(order) : "");
+    const qs = new URLSearchParams(location.search);
+    const urlPhase = (qs.get("phase")==="2"?2:1);
+    const makeUrl = (pid, order, phase) => location.origin + location.pathname +
+        "?pid=" + encodeURIComponent(pid) +
+        (order ? "&order=" + encodeURIComponent(order) : "") +
+        (phase ? "&phase=" + phase : "");
 
     // DOM
     const sConsent = document.getElementById("s-consent");
-    const sSwitch  = document.getElementById("s-switch");
+    const sSwitch1 = document.getElementById("s-switch1");
+    const sSwitch2 = document.getElementById("s-switch2");
     const sTrial   = document.getElementById("s-trial");
     const sDone    = document.getElementById("s-done");
     const agree = document.getElementById("agree");
@@ -104,9 +117,12 @@
     const btnNew = document.getElementById("btnNew");
     const startInfo = document.getElementById("startInfo");
     const startStatus = document.getElementById("startStatus");
-    const switchMsg = document.getElementById("switchMsg");
-    const continueLink = document.getElementById("continueLink");
-    const qr = document.getElementById("qr");
+    const switchMsg1 = document.getElementById("switchMsg1");
+    const continueLink1 = document.getElementById("continueLink1");
+    const qr1 = document.getElementById("qr1");
+    const switchMsg2 = document.getElementById("switchMsg2");
+    const continueLink2 = document.getElementById("continueLink2");
+    const qr2 = document.getElementById("qr2");
     const sentence = document.getElementById("sentence");
     const input = document.getElementById("input");
     const btnSubmit = document.getElementById("btnSubmit");
@@ -121,7 +137,7 @@
     let backspaces = 0, paused500 = 0;
     let keystrokes = [];
 
-    // Persisted state key
+    // tiny state machine (restores after refresh)
     const setState = (s) => localStorage.setItem("ts_state", s);
     const getState = () => localStorage.getItem("ts_state") || "consent";
 
@@ -136,53 +152,51 @@
       localStorage.removeItem("ts_pid");
       localStorage.removeItem("ts_device_order");
       localStorage.removeItem("ts_state");
-      location.href = location.pathname; // reload without ?pid
+      location.href = location.pathname; // reload without query
     });
 
-    // Adopt ?pid=&order= (handoff)
+    // Adopt ?pid&order on any device
     (function adoptFromUrl(){
-      const qs = new URLSearchParams(location.search);
       const pidQ = qs.get("pid");
       const orderQ = qs.get("order");
       if (pidQ) { pid = pidQ; localStorage.setItem("ts_pid", pid); }
       if (orderQ) { deviceOrder = orderQ; localStorage.setItem("ts_device_order", deviceOrder); }
     })();
 
-    // Restore basic UI on refresh
-    (function restoreFromState(){
+    // Restore UI on refresh
+    (function restore(){
       pid = pid || localStorage.getItem("ts_pid") || null;
       deviceOrder = deviceOrder || localStorage.getItem("ts_device_order") || null;
       const state = getState();
-      if (state === "switch") {
-        // keep showing switch if current device isn't firstDev
-        if (deviceOrder) {
-          const [firstDev] = parseOrder(deviceOrder);
-          if (firstDev !== DEVICE_NOW) {
-            const url = makeUrl(pid, deviceOrder);
-            hide(sConsent); show(sSwitch);
-            switchMsg.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
-            continueLink.textContent = url;
-            continueLink.style.userSelect = "all";
-            qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-          }
+
+      if (state === "switch1") {
+        const [firstDev] = parseOrder(deviceOrder||"");
+        if (firstDev && firstDev !== DEVICE_NOW) {
+          const url = makeUrl(pid, deviceOrder, 1);
+          hide(sConsent); show(sSwitch1);
+          switchMsg1.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
+          continueLink1.textContent = url; continueLink1.style.userSelect = "all";
+          qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
         }
       } else if (state === "trial") {
-        hide(sConsent); show(sTrial);
-        setupTrial();
+        hide(sConsent); show(sTrial); setupTrial();
+      } else if (state === "switch2") {
+        const [, secondDev] = parseOrder(deviceOrder||"");
+        const url = makeUrl(pid, deviceOrder, 2);
+        hide(sConsent); show(sSwitch2);
+        switchMsg2.textContent = `Great! Now continue on your ${secondDev} to finish.`;
+        continueLink2.textContent = url; continueLink2.style.userSelect = "all";
+        qr2.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
       } else if (state === "done") {
-        hide(sConsent); show(sDone);
-        pidOut.textContent = pid || "";
+        hide(sConsent); show(sDone); pidOut.textContent = pid || "";
       }
     })();
 
     // Start flow
     btnStart.addEventListener("click", async () => {
-      // Debounce + visual loading
-      btnStart.disabled = true;
-      btnStart.textContent = "Starting…";
+      btnStart.disabled = true; btnStart.textContent = "Starting…";
       startStatus.textContent = "Contacting server…";
 
-      // PID + order
       pid = pid || localStorage.getItem("ts_pid") || uuid();
       localStorage.setItem("ts_pid", pid);
 
@@ -194,192 +208,144 @@
 
       startInfo.textContent = `PID: ${pid} • Assigned order: ${deviceOrder}`;
 
-      // Only send participant_start once per PID
+      // Only post participant_start once per PID
       const startedKey = `ts_started_${pid}`;
       if (!localStorage.getItem(startedKey)) {
         try {
           await fetch(ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain" },
+            method: "POST", headers: { "Content-Type": "text/plain" },
             body: JSON.stringify({
-              secret: SECRET,
-              type: "participant_start",
-              pid,
-              age_group: ageGroup.value,
-              device_order: deviceOrder,
-              consent_version: "v1",
-              start_iso: new Date().toISOString()
+              secret: SECRET, type: "participant_start",
+              pid, age_group: ageGroup.value, device_order: deviceOrder,
+              consent_version: "v1", start_iso: new Date().toISOString()
             })
           });
           localStorage.setItem(startedKey, "1");
         } catch(e){ console.warn("participant_start failed", e); }
       }
 
-      // Enforce order
-      const [firstDev] = parseOrder(deviceOrder);
-      if (firstDev !== DEVICE_NOW) {
-        hide(sConsent); show(sSwitch);
-        const url = makeUrl(pid, deviceOrder);
-        switchMsg.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
-        continueLink.textContent = url;
-        continueLink.style.userSelect = "all";
-        qr.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-        setState("switch");
-        startStatus.textContent = "";
-        btnStart.textContent = "Start";
+      const [firstDev, secondDev] = parseOrder(deviceOrder);
+
+      // Enforce phase/device
+      if (urlPhase === 1 && DEVICE_NOW !== firstDev) {
+        hide(sConsent); show(sSwitch1);
+        const url = makeUrl(pid, deviceOrder, 1);
+        switchMsg1.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
+        continueLink1.textContent = url; continueLink1.style.userSelect = "all";
+        qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
+        setState("switch1");
+        btnStart.textContent = "Start"; startStatus.textContent = "";
         return;
       }
 
-      // Continue to trial
+      if (urlPhase === 2 && DEVICE_NOW !== secondDev) {
+        // wrong device for phase 2 — bounce back message for clarity
+        hide(sConsent); show(sSwitch1);
+        const url = makeUrl(pid, deviceOrder, 2);
+        switchMsg1.textContent = `Phase 2 must be on your ${secondDev}. Open this on that device.`;
+        continueLink1.textContent = url; continueLink1.style.userSelect = "all";
+        qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
+        setState("switch1");
+        btnStart.textContent = "Start"; startStatus.textContent = "";
+        return;
+      }
+
       hide(sConsent); show(sTrial);
       setState("trial");
-      startStatus.textContent = "";
-      btnStart.textContent = "Start";
+      btnStart.textContent = "Start"; startStatus.textContent = "";
       setupTrial();
     });
 
     function setupTrial() {
       sentence.textContent = TEST_SENTENCE;
-      input.value = "";
-      input.disabled = false;
-      input.focus();
-      keystrokes = [];
-      backspaces = 0;
-      paused500 = 0;
-      started = false;  // timer starts on first key
-      finished = false; // stop timer when matched
-      t0 = 0;
-      lastT = 0;
+      input.value = ""; input.disabled = false; input.focus();
+      keystrokes = []; backspaces = 0; paused500 = 0;
+      started = false; finished = false; t0 = 0; lastT = 0;
       trialStatus.textContent = "";
 
-      // Timer
       const tick = () => {
-        const now = ms();
-        const elapsed = started ? Math.round(now - t0) : 0;
+        const now = ms(); const elapsed = started ? Math.round(now - t0) : 0;
         timerEl.textContent = `${elapsed} ms`;
-        if(!finished) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
+        if (!finished) requestAnimationFrame(tick);
+      }; requestAnimationFrame(tick);
 
-      // Events
       input.onkeydown = onKeydown;
-      input.oninput = onInput;
-      input.onpaste = (e) => e.preventDefault();
+      input.oninput  = onInput;
+      input.onpaste  = e => e.preventDefault();
 
-      // Auto-submit when match
       input.addEventListener("input", () => {
         const match = (input.value === TEST_SENTENCE);
         btnSubmit.disabled = !match;
         if (match) {
-          // freeze immediately to avoid lag
-          finished = true;
-          input.disabled = true;
-          trialStatus.textContent = "Submitting…";
-          // let UI paint, then submit
-          setTimeout(() => { if (sTrial && !sTrial.classList.contains("hidden")) btnSubmit.click(); }, 0);
+          finished = true; input.disabled = true; trialStatus.textContent = "Submitting…";
+          setTimeout(() => { if (!sTrial.classList.contains("hidden")) btnSubmit.click(); }, 0);
         }
       });
 
-      // Enter also works (won’t usually be needed now)
       btnSubmit.onclick = submitTrial;
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); if (!btnSubmit.disabled) btnSubmit.click(); }
       });
     }
 
-    function stampStartIfNeeded(){
-      if (!started) {
-        started = true;
-        t0 = ms();
-        lastT = t0;
-      }
-    }
-
-    function onKeydown(e) {
-      stampStartIfNeeded();
-      const t = ms();
-      if (t - lastT >= 500) paused500++;
-      lastT = t;
-      if (e.key === "Backspace") backspaces++;
-      keystrokes.push({ event_seq: keystrokes.length+1, t_ms: Math.round(t - t0), event_type: "keydown", key: e.key, value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE });
-    }
-
-    function onInput(e) {
-      stampStartIfNeeded();
-      const t = ms();
-      if (t - lastT >= 500) paused500++;
-      lastT = t;
-      keystrokes.push({ event_seq: keystrokes.length+1, t_ms: Math.round(t - t0), event_type: "input", key: "", value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE });
-    }
+    function stampStartIfNeeded(){ if (!started) { started = true; t0 = ms(); lastT = t0; } }
+    function onKeydown(e){ stampStartIfNeeded(); const t=ms(); if (t-lastT>=500) paused500++; lastT=t; if (e.key==="Backspace") backspaces++; keystrokes.push({event_seq:keystrokes.length+1,t_ms:Math.round(t-t0),event_type:"keydown",key:e.key,value_len:input.value.length,cursor_pos:input.selectionStart,is_mobile:IS_MOBILE}); }
+    function onInput(e){ stampStartIfNeeded(); const t=ms(); if (t-lastT>=500) paused500++; lastT=t; keystrokes.push({event_seq:keystrokes.length+1,t_ms:Math.round(t-t0),event_type:"input",key:"",value_len:input.value.length,cursor_pos:input.selectionStart,is_mobile:IS_MOBILE}); }
 
     async function submitTrial() {
       btnSubmit.disabled = true;
-
       const total = started ? Math.round(ms() - t0) : 0;
-      const deltas = [];
-      for (let i = 1; i < keystrokes.length; i++) deltas.push(keystrokes[i].t_ms - keystrokes[i-1].t_ms);
+      const deltas=[]; for (let i=1;i<keystrokes.length;i++) deltas.push(keystrokes[i].t_ms-keystrokes[i-1].t_ms);
       const meanInter = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length) : 0;
-      const p95Inter = deltas.length ? Math.round(deltas.slice().sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
+      const p95Inter  = deltas.length ? Math.round(deltas.slice().sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
 
       // trial_summary
-      let ok = false;
       try {
-        const res = await fetch(ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
+        await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
           body: JSON.stringify({
-            secret: SECRET,
-            type: "trial_summary",
-            pid,
-            trial_id: "T1",
-            device: DEVICE_NOW,
-            sentence_id: "S1",
-            order_in_block: 1,
-            start_ms: 0,
-            end_ms: total,
-            total_ms: total,
-            mean_interkey_ms: meanInter,
-            p95_interkey_ms: p95Inter,
-            pause500_count: paused500,
-            backspace_count: backspaces,
-            ua: navigator.userAgent,
-            os: "unknown", browser: "unknown",
-            screen_w: window.screen.width, screen_h: window.screen.height, dpr: window.devicePixelRatio,
-            paste_attempted: false, focus_blur_count: 0,
-            flags: "proto-v3"
+            secret: SECRET, type:"trial_summary", pid,
+            trial_id: (urlPhase===1?"T1A":"T1B"),
+            device: DEVICE_NOW, sentence_id: "S1", order_in_block: (urlPhase===1?1:2),
+            start_ms: 0, end_ms: total, total_ms: total,
+            mean_interkey_ms: meanInter, p95_interkey_ms: p95Inter,
+            pause500_count: paused500, backspace_count: backspaces,
+            ua: navigator.userAgent, os:"unknown", browser:"unknown",
+            screen_w: screen.width, screen_h: screen.height, dpr: devicePixelRatio,
+            paste_attempted:false, focus_blur_count:0, flags: "proto-v4"
           })
         }).then(r=>r.json());
-        ok = !!res?.ok;
       } catch(e){ console.error(e); }
 
       // raw keystrokes
       try {
-        await fetch(ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ secret: SECRET, type: "keystrokes_batch", pid, trial_id: "T1", events: keystrokes })
-        });
-      } catch(e){ console.warn("keystrokes_batch failed", e); }
-
-      // participant_end
-      try {
-        await fetch(ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ secret: SECRET, type: "participant_end", pid, end_iso: new Date().toISOString() })
+        await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
+          body: JSON.stringify({ secret: SECRET, type: "keystrokes_batch", pid, trial_id: (urlPhase===1?"T1A":"T1B"), events: keystrokes })
         });
       } catch(e){}
 
-      // Clear for device sharing
-      localStorage.removeItem("ts_pid");
-      localStorage.removeItem("ts_device_order");
-      localStorage.removeItem(`ts_started_${pid}`);
+      const [firstDev, secondDev] = parseOrder(localStorage.getItem("ts_device_order")||deviceOrder||"");
 
-      // Done UI
-      hide(sTrial); show(sDone);
-      setState("done");
-      pidOut.textContent = pid + (ok ? "" : " (send failed)");
-      trialStatus.textContent = "";
+      if (urlPhase === 1) {
+        // show handoff to phase 2 (second device). Do NOT end participant yet.
+        hide(sTrial); show(sSwitch2);
+        setState("switch2");
+        const url = makeUrl(pid, deviceOrder, 2);
+        switchMsg2.textContent = `Great! Now continue on your ${secondDev} to finish.`;
+        continueLink2.textContent = url; continueLink2.style.userSelect = "all";
+        qr2.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
+      } else {
+        // phase 2 completes the participant
+        try {
+          await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" },
+            body: JSON.stringify({ secret: SECRET, type: "participant_end", pid, end_iso: new Date().toISOString() })
+          });
+        } catch(e){}
+        // clear local storage for device sharing
+        localStorage.removeItem("ts_pid");
+        localStorage.removeItem("ts_device_order");
+        localStorage.removeItem(`ts_started_${pid}`);
+        hide(sTrial); show(sDone); setState("done"); pidOut.textContent = pid;
+      }
     }
   </script>
 </body>
