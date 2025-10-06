@@ -453,15 +453,15 @@
         if (!r.ok) throw new Error(r.error || "submit failed");
 
         if (r.next === 2) { // finished phase 1
-          statusEl.textContent = "Great! Now continue on your other device (Phase 2).";
-          // On phone this hides the QR; on laptop it would show (though this path runs on phone).
-          statusEl.textContent = "Great! Phase 1 complete. This page will help you continue on your other device.";
-          (getDevice(), /*waitPhase*/ 2, /*linkPhase*/ 2);
-        } else if (r.next === 'done' || (r.phase1_done && r.phase2_done)) {
-          await participantEnd(pid);
-          showDoneAndCycle();
-        } else {
-          statusEl.textContent = "Continue…";
+          const devNow = getDevice();
+          // Friendlier message in the typing card
+          statusEl.textContent = devNow === "laptop"
+            ? "Great! Phase 1 complete. Use the link/QR below to continue on your phone."
+            : "Great! Phase 1 complete. This page will help you continue on your other device.";
+
+          // Show the handoff card that waits for Phase 2 and links directly to Phase 2
+          showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
+          return;
         }
       } catch (e) {
         statusEl.textContent = "Network error — try again";
@@ -469,26 +469,25 @@
       }
     }
 
-    /*** HANDOFF ***/
+    // --- HANDOFF CARD (shows link/QR, polls, and auto-switches when ready) ---
     function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
       // Which device does the link point to?
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
       const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
 
       // Build link (pid + order + *linkPhase*)
-      const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), linkPhase);
+      const orderStr = order.join("→") || (deviceOrder || "");
+      const link = handoffLink(pid, orderStr, linkPhase);
 
-      // Decide if this is the special case: wrong start device → send them to Phase 1,
-      // while *this* page will auto-switch to Phase 2 when P1 finishes elsewhere.
-      const orderStr = order.join("→") || "?";
+      // Special case: wrong-start → send them to Phase 1 while this page waits for Phase 2.
       const isWrongStartWithP1Link = (waitPhase === 2 && linkPhase === 1);
 
-      // Dynamic title (“Start…” before Phase 1 vs “Continue…” around Phase 2)
+      // Title
       const handoffTitle = document.getElementById("handoffTitle");
       handoffTitle.textContent = linkPhase === 1 ? "Start on your other device"
         : "Continue on your other device";
 
-      // Main message
+      // Message
       handoffMsg.innerHTML = isWrongStartWithP1Link
         ? `Your assigned order is <b>${orderStr}</b>. After finishing Phase 1 on your <b>${order[0]}</b>, <b>this page</b> will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
         : `Your assigned order is <b>${orderStr}</b>. Please continue on your <b>${linkTargetDevice}</b>.`;
@@ -496,30 +495,32 @@
       // “Waiting…” copy
       waitTxt.textContent = isWrongStartWithP1Link
         ? "Waiting for Phase 1 to complete on your other device…"
-        : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting for that device…");
+        : (linkPhase === waitPhase
+          ? (waitPhase === 2 ? "Preparing Phase 2…" : "Preparing…")
+          : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting for that device…"));
 
       // Link UI
       handoffUrl.textContent = link;
       btnCopy.onclick = async () => {
         try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
-        catch { }
+        catch { /* no-op */ }
         setTimeout(() => btnCopy.textContent = "Copy link", 1200);
       };
 
-      // 🔳 QR visibility rules:
-      // - Only show on *laptop* (never show on phone).
-      // - Only when the link targets the *phone* (laptops can’t scan, phones can).
-      // - Never show on “preparing” views (when linkPhase == waitPhase).
+      // QR visibility rules:
+      // - Only show on *laptop* (never on phone).
+      // - Only when the link targets the *phone* (laptops can’t scan; phones can).
+      // - Never show on “preparing” views (when linkPhase === waitPhase).
       const shouldShowQR =
         (currentDevice === "laptop") &&
-        ((order[linkPhase === 1 ? 0 : 1] || "phone") === "phone") &&
+        ((linkTargetDevice) === "phone") &&
         (linkPhase !== waitPhase);
 
       if (shouldShowQR) {
         showEl(qrWrap);
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
       } else {
-        hideEl(qrWrap);               // ← ensures QR is hidden on all “preparing” pages
+        hideEl(qrWrap);
         qrImg.removeAttribute("src");
       }
 
@@ -534,6 +535,7 @@
       startHandoffPolling(waitPhase);
     }
 
+
     /*** DONE + AUTO-CYCLE ***/
     function showDoneAndCycle() {
       hide(sConsent); hide(sHandoff); hide(sTrial); show(sDone);
@@ -546,15 +548,35 @@
       location.replace(baseURL()); // clean URL (drops pid/order/phase)
     }
 
+    // --- WRONG DEVICE (opened a phase link on the wrong device) ---
     function showWrongDevice(targetPhase) {
       hide(sConsent); hide(sHandoff); hide(sTrial); show(sWrong);
-      const [first, second] = (deviceOrder || "").split("→");
-      const targetDevice = targetPhase === 1 ? first : second;
-      const link = handoffLink(pid, deviceOrder, targetPhase);
-      wrongMsg.innerHTML = `This link is for your <b>${targetDevice}</b> (Phase ${targetPhase}). 
-  You’re on a <b>${getDevice()}</b>. Please open it on the other device.`;
+
+      // Resolve order + targets
+      const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
+      const targetDevice = targetPhase === 1 ? (order[0] || "phone") : (order[1] || "laptop");
+      const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), targetPhase);
+
+      // Copy
+      wrongMsg.innerHTML =
+        `This link is for your <b>${targetDevice}</b> (Phase ${targetPhase}). ` +
+        `You’re on a <b>${getDevice()}</b>. Please open it on the other device.`;
+
+      // Link text
       wrongUrl.textContent = link;
-      setTimeout(() => { wrongQr.src = qrFor(link); }, 0);
+
+      // QR visibility: only on laptop and only when the target device is phone.
+      const showQR = (getDevice() === "laptop") && (targetDevice === "phone");
+      const qrBox = wrongQr.parentElement; // wrapper div around the <img>
+      if (showQR) {
+        showEl(qrBox);
+        // defer to allow layout before setting src
+        setTimeout(() => { wrongQr.src = qrFor(link); }, 0);
+      } else {
+        hideEl(qrBox);
+        wrongQr.removeAttribute("src");
+      }
+
       // keep “waiting” state so refresh returns here
       localStorage.setItem("ts_wait_phase", String(targetPhase));
       localStorage.setItem("ts_handoff_url", link);
