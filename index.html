@@ -1,382 +1,320 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Typing Study — Minimal Prototype</title>
-  <style>
-    :root { --muted:#666; --b:#ddd; --radius:12px; }
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;line-height:1.45}
-    h1{font-size:1.25rem;margin-bottom:.25rem}
-    .muted{color:var(--muted);font-size:.92rem;margin:.25rem 0}
-    .card{border:1px solid var(--b);border-radius:var(--radius);padding:16px;margin:16px 0}
-    .hidden{display:none}
-    textarea{width:100%;min-height:140px;font-size:1rem}
-    button{padding:10px 14px;border-radius:10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .row{display:flex;gap:8px;align-items:center}
-    .row>*{flex:1}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    .center{display:flex;align-items:center;gap:10px}
-    .pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--b);border-radius:999px;padding:.25rem .6rem .25rem .35rem}
-    .loader{width:14px;height:14px;border:2px solid #bbb;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .linkbox{border:1px dashed var(--b);border-radius:10px;padding:10px;margin-top:8px;background:#fafafa}
-    img.qr{width:140px;height:140px;border:1px solid var(--b);border-radius:8px}
-    .ok{color:#137333}
-    .warn{color:#b06000}
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Typing Study — Minimal Prototype</title>
+<style>
+:root{--muted:#666;--b:#ddd;--r:12px}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;line-height:1.45}
+h1{font-size:1.25rem;margin-bottom:.25rem}
+.muted{color:var(--muted);font-size:.92rem;margin:.25rem 0}
+.card{border:1px solid var(--b);border-radius:var(--r);padding:16px;margin:16px 0}
+.hidden{display:none}
+textarea{width:100%;min-height:140px;font-size:1rem}
+button{padding:10px 14px;border-radius:10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer}
+button:disabled{opacity:.6;cursor:not-allowed}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.center{display:flex;align-items:center;gap:10px}
+.pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--b);border-radius:999px;padding:.25rem .6rem .25rem .35rem}
+.loader{width:14px;height:14px;border:2px solid #bbb;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.linkbox{border:1px dashed var(--b);border-radius:10px;padding:10px;margin-top:8px;background:#fafafa}
+img.qr{width:140px;height:140px;border:1px solid var(--b);border-radius:8px;background:#fff}
+.ok{color:#137333}
+.warn{color:#b06000}
+</style>
 </head>
 <body>
-  <h1>Typing Study — Minimal Prototype</h1>
-  <p class="muted">One page, two devices. The page will guide the right device and step automatically.</p>
+<h1>Typing Study — Minimal Prototype</h1>
+<p class="muted">One page, two devices. The page will guide the right device and step automatically.</p>
 
-  <!-- Consent -->
-  <section id="s-consent" class="card">
-    <h2>Consent</h2>
-    <p>This prototype records timing for a single sentence. No personal info is collected.</p>
-    <label class="center" style="gap:.6rem">
-      <input id="agree" type="checkbox" />
-      I am 18–22 or 40–55 and I consent.
-    </label>
-    <div class="row" style="margin-top:12px">
-      <select id="ageGroup">
-        <option value="">Age group…</option>
-        <option>18–22</option>
-        <option>40–55</option>
-      </select>
-      <button id="btnStart" disabled>Start</button>
-    </div>
-    <p id="startInfo" class="mono muted"></p>
-  </section>
+<section id="s-consent" class="card">
+  <h2>Consent</h2>
+  <p>This prototype records timing for a single sentence. No personal info is collected.</p>
+  <label class="center" style="gap:.6rem">
+    <input id="agree" type="checkbox"/> I am 18–22 or 40–55 and I consent.
+  </label>
+  <div class="row" style="margin-top:12px">
+    <select id="ageGroup">
+      <option value="">Age group…</option>
+      <option>18–22</option>
+      <option>40–55</option>
+    </select>
+    <button id="btnStart" disabled>Start</button>
+  </div>
+  <p id="startInfo" class="mono muted"></p>
+</section>
 
-  <!-- Handoff -->
-  <section id="s-handoff" class="card hidden">
-    <h2>Start on your other device</h2>
-    <p id="handoffMsg" class="muted"></p>
-    <div class="linkbox">
-      <div class="mono" id="handoffUrl" style="word-break:break-all"></div>
-      <div class="center" style="margin-top:8px;justify-content:flex-start">
-        <button id="btnCopy">Copy link</button>
-        <div class="pill"><span class="loader"></span><span class="muted">Waiting for that device…</span></div>
-      </div>
+<section id="s-handoff" class="card hidden">
+  <h2>Start on your other device</h2>
+  <p id="handoffMsg" class="muted"></p>
+  <div class="linkbox">
+    <div class="mono" id="handoffUrl" style="word-break:break-all"></div>
+    <div class="center" style="margin-top:8px;justify-content:flex-start">
+      <button id="btnCopy">Copy link</button>
+      <div class="pill"><span class="loader"></span><span id="waitTxt" class="muted">Waiting for that device…</span></div>
     </div>
-    <div class="center" style="gap:16px;margin-top:10px">
-      <img id="qr" class="qr" alt="QR code to open on the other device"/>
-      <div class="muted">Scan this QR with your other device’s camera.</div>
-    </div>
-  </section>
+  </div>
+  <div class="center" style="gap:16px;margin-top:10px">
+    <img id="qr" class="qr" alt="QR code"/>
+    <div class="muted">Scan this QR with your other device’s camera.</div>
+  </div>
+</section>
 
-  <!-- Trial -->
-  <section id="s-trial" class="card hidden">
-    <h2>Type Exactly What You See</h2>
-    <p id="sentence" class="mono"></p>
-    <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-              placeholder="Type the sentence here. It will submit automatically."></textarea>
-    <div class="row" style="margin-top:8px">
-      <div class="pill"><span id="spin" class="loader hidden"></span><span id="status" class="muted">Ready</span></div>
-      <div id="timer" class="mono" style="text-align:right">0 ms</div>
-    </div>
-    <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
-  </section>
+<section id="s-trial" class="card hidden">
+  <h2>Type Exactly What You See</h2>
+  <p id="phaseLabel" class="muted"></p>
+  <p id="sentence" class="mono"></p>
+  <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            placeholder="Type the sentence here. It will submit automatically."></textarea>
+  <div class="row" style="margin-top:8px">
+    <div class="pill"><span id="spin" class="loader hidden"></span><span id="status" class="muted">Ready</span></div>
+    <div id="timer" class="mono" style="text-align:right">0 ms</div>
+  </div>
+  <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
+</section>
 
-  <!-- Done -->
-  <section id="s-done" class="card hidden">
-    <h2 class="ok">Done ✅</h2>
-    <p>Thanks! Data sent. Your participant ID:</p>
-    <p class="mono" id="pidOut"></p>
-    <p class="muted">This page will reset for the next participant automatically.</p>
-  </section>
+<section id="s-done" class="card hidden">
+  <h2 class="ok">Done ✅</h2>
+  <p>Thanks! Data sent. Your participant ID:</p>
+  <p class="mono" id="pidOut"></p>
+  <p class="muted">This page will reset for the next participant automatically.</p>
+</section>
 
 <script>
-/*** CONFIG — change if your deployment differs ***/
+/*** CONFIG ***/
 const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
 const SECRET   = "h33iy43brfu3hf93fhb3fi3ivh3v";
-
-/*** SENTENCE (placeholder – we’ll swap in your set later) ***/
 const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
 
 /*** DOM ***/
-const sConsent = document.getElementById("s-consent");
-const sHandoff = document.getElementById("s-handoff");
-const sTrial   = document.getElementById("s-trial");
-const sDone    = document.getElementById("s-done");
-const agree    = document.getElementById("agree");
-const ageGroup = document.getElementById("ageGroup");
-const btnStart = document.getElementById("btnStart");
-const startInfo= document.getElementById("startInfo");
-const handoffMsg = document.getElementById("handoffMsg");
-const handoffUrl = document.getElementById("handoffUrl");
-const btnCopy  = document.getElementById("btnCopy");
-const qrImg    = document.getElementById("qr");
-const sentence = document.getElementById("sentence");
-const textarea = document.getElementById("input");
-const timerEl  = document.getElementById("timer");
-const statusEl = document.getElementById("status");
-const spinEl   = document.getElementById("spin");
-const pidOut   = document.getElementById("pidOut");
+const sConsent=document.getElementById("s-consent");
+const sHandoff=document.getElementById("s-handoff");
+const sTrial=document.getElementById("s-trial");
+const sDone=document.getElementById("s-done");
+const agree=document.getElementById("agree");
+const ageGroup=document.getElementById("ageGroup");
+const btnStart=document.getElementById("btnStart");
+const startInfo=document.getElementById("startInfo");
+const handoffMsg=document.getElementById("handoffMsg");
+const handoffUrl=document.getElementById("handoffUrl");
+const btnCopy=document.getElementById("btnCopy");
+const qrImg=document.getElementById("qr");
+const sentenceEl=document.getElementById("sentence");
+const textarea=document.getElementById("input");
+const timerEl=document.getElementById("timer");
+const statusEl=document.getElementById("status");
+const spinEl=document.getElementById("spin");
+const phaseLabel=document.getElementById("phaseLabel");
+const pidOut=document.getElementById("pidOut");
+const waitTxt=document.getElementById("waitTxt");
 
 /*** STATE ***/
-let pid = null;
-let deviceOrder = null;  // "phone→laptop" or "laptop→phone"
-let phase = 1;           // 1 or 2
-let t0 = 0, lastT = 0, timerRAF = null;
-let keystrokes = [], backspaces = 0, paused500 = 0;
-let submitting = false;
+let pid=null, deviceOrder=null, phase=1;
+let t0=0,lastT=0,rafId=null,frozen=false;
+let keystrokes=[],backspaces=0,paused500=0,submitting=false;
 
 /*** UTIL ***/
-const ms = () => performance.now();
-const show = el => el.classList.remove("hidden");
-const hide = el => el.classList.add("hidden");
-const setSpin = on => { spinEl.classList.toggle("hidden", !on); }
-const getDevice = () => (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "phone" : "laptop");
-const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-const baseURL = () => location.origin + location.pathname;
-const q = new URLSearchParams(location.search);
+const q=new URLSearchParams(location.search);
+const ms=()=>performance.now();
+const show=el=>el.classList.remove("hidden");
+const hide=el=>el.classList.add("hidden");
+const setSpin=on=>spinEl.classList.toggle("hidden",!on);
+const getDevice=()=>/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)?"phone":"laptop";
+const uuid=()=> "TS-"+Math.random().toString(36).slice(2)+Date.now().toString(36);
+const baseURL=()=>location.origin+location.pathname;
+function handoffLink(pid,order,targetPhase){const u=new URL(baseURL());u.searchParams.set("pid",pid);u.searchParams.set("order",order);u.searchParams.set("phase",targetPhase);return u.toString();}
+const qrFor=url=>"https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl="+encodeURIComponent(url);
 
 /*** BACKEND ***/
-async function post(body) {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type":"text/plain" }, // CORS-simple
-    body: JSON.stringify({ secret: SECRET, ...body })
-  });
-  return res.json();
+async function post(body){
+  const r = await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({secret:SECRET,...body})});
+  return r.json();
 }
-async function getStatus(_pid) {
-  const r = await post({ type:"status", pid:_pid });
-  return r;
-}
-async function participantStart(_pid, age_group) {
-  return post({ type:"participant_start", pid:_pid, age_group, consent_version:"v1", start_iso:new Date().toISOString() });
-}
-async function trialSummary(payload) {
-  return post({ type:"trial_summary", ...payload });
-}
-async function participantEnd(_pid) {
-  return post({ type:"participant_end", pid:_pid, end_iso:new Date().toISOString() });
-}
+const participantStart = (pid,age)=>post({type:"participant_start",pid,age_group:age,consent_version:"v1",start_iso:new Date().toISOString()});
+const getStatus = (pid)=>post({type:"status",pid});
+const trialSummary = (payload)=>post({type:"trial_summary",...payload});
+const participantEnd = (pid)=>post({type:"participant_end",pid,end_iso:new Date().toISOString()});
 
-/*** HANDOFF LINKS ***/
-function handoffLink(pid, order, targetPhase){
-  const u = new URL(baseURL());
-  u.searchParams.set("pid", pid);
-  u.searchParams.set("order", order);
-  u.searchParams.set("phase", targetPhase);
-  return u.toString();
-}
-function qrFor(url){
-  // Quick QR via Google Charts
-  return "https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=" + encodeURIComponent(url);
-}
+/*** CONSENT UI ***/
+agree.addEventListener("change",()=>btnStart.disabled=!(agree.checked&&ageGroup.value));
+ageGroup.addEventListener("change",()=>btnStart.disabled=!(agree.checked&&ageGroup.value));
 
-/*** CONSENT START ***/
-agree.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
-ageGroup.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
+btnStart.addEventListener("click", async ()=>{
+  if(btnStart.disabled) return;
+  btnStart.disabled=true;
+  startInfo.innerHTML=`<span class="loader"></span> contacting server…`;
 
-btnStart.addEventListener("click", async () => {
-  if (btnStart.disabled) return;
-  btnStart.disabled = true;
-  startInfo.innerHTML = `<span class="loader"></span> contacting server…`;
+  pid = q.get("pid") || localStorage.getItem("ts_pid") || uuid();
+  localStorage.setItem("ts_pid",pid);
 
-  // choose / adopt PID
-  const urlPid = q.get("pid");
-  pid = urlPid || localStorage.getItem("ts_pid") || uuid();
-  localStorage.setItem("ts_pid", pid);
-
-  try {
+  try{
     const r = await participantStart(pid, ageGroup.value);
-    // r.device_order is guaranteed (server assigns if missing)
     deviceOrder = r.device_order || (r.status && r.status.device_order);
     localStorage.setItem("ts_order", deviceOrder);
-    startInfo.textContent = `PID: ${pid} | Order: ${deviceOrder}`;
+    startInfo.textContent=`PID: ${pid} | Order: ${deviceOrder}`;
 
-    // Decide where this device belongs now
-    const dev = getDevice();
-    const order = deviceOrder.split("→");
-    const first = order[0], second = order[1];
+    const dev=getDevice();
+    const [first,second]=deviceOrder.split("→");
+    const st = r.status || await getStatus(pid);
 
-    // Check current server status (in case someone already started elsewhere)
-    const st = (r.status) ? r.status : await getStatus(pid);
+    if(st.completed){ return cycleToNewParticipant(); }
 
-    // If completed or locked, immediately cycle to a fresh run
-    if (st.completed) return cycleToNewParticipant();
-
-    // Determine the phase we should run here
-    if (!st.phase1_done && dev === first) { phase = 1; gotoTrial(); }
-    else if (st.phase1_done && !st.phase2_done && dev === second) { phase = 2; gotoTrial(); }
+    if(!st.phase1_done && dev===first){ phase=1; gotoTrialWithLoading(); }
+    else if(st.phase1_done && !st.phase2_done && dev===second){ phase=2; gotoTrialWithLoading(); }
     else {
-      // Wrong device: show handoff card to the correct one
-      phase = (!st.phase1_done ? 1 : 2);
+      phase = (!st.phase1_done?1:2);
       showHandoff(dev, phase);
     }
-  } catch (e) {
-    startInfo.textContent = "Error starting participant. Please refresh and try again.";
-    btnStart.disabled = false;
+  }catch(err){
+    startInfo.textContent="Error starting. Refresh and try again.";
+    btnStart.disabled=false;
   }
 });
 
-/*** PAGE LOAD: RESTORE / DIRECT PHASE LINKS ***/
-window.addEventListener("DOMContentLoaded", async () => {
-  // If URL carries a pid/order/phase (from QR), adopt and go straight in
-  const pidQ = q.get("pid");
-  const orderQ = q.get("order");
-  const phaseQ = Number(q.get("phase") || 0);
-  if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
-    pid = pidQ; deviceOrder = orderQ; phase = phaseQ;
-    localStorage.setItem("ts_pid", pid);
-    localStorage.setItem("ts_order", deviceOrder);
-    hide(sConsent);
-    // Make sure PID isn’t completed/locked
-    const st = await getStatus(pid);
-    if (st.completed) return showDoneAndCycle();
-    const dev = getDevice();
-    const [first, second] = deviceOrder.split("→");
-    if ((phase===1 && dev!==first) || (phase===2 && dev!==second)) {
-      // even if they opened with a phase link on the wrong device, hand them off again
+/*** DIRECT PHASE LINKS (from QR/handoff) ***/
+window.addEventListener("DOMContentLoaded", async ()=>{
+  const pidQ=q.get("pid"), orderQ=q.get("order"), phaseQ=Number(q.get("phase")||0);
+  if(pidQ && orderQ && (phaseQ===1 || phaseQ===2)){
+    pid=pidQ; deviceOrder=orderQ; phase=phaseQ;
+    localStorage.setItem("ts_pid",pid);
+    localStorage.setItem("ts_order",deviceOrder);
+
+    hide(sConsent); show(sHandoff); // brief state so user sees progress
+    waitTxt.textContent = `Preparing Phase ${phase}…`;
+
+    // 🔑 Ensure server row exists & fetch authoritative order
+    try{
+      const r = await participantStart(pid, ""); // idempotent
+      deviceOrder = r.device_order || (r.status && r.status.device_order) || deviceOrder;
+      localStorage.setItem("ts_order", deviceOrder);
+    }catch(e){}
+
+    // If wrong device, keep handoff; otherwise go into trial
+    const dev=getDevice(); const [first,second]=deviceOrder.split("→");
+    if((phase===1 && dev!==first) || (phase===2 && dev!==second)){
       showHandoff(dev, phase);
-      return;
+    }else{
+      gotoTrialWithLoading();
     }
-    gotoTrial();
     return;
   }
-
-  // Otherwise, normal consent screen (until Start)
   show(sConsent);
 });
 
-/*** TRIAL SETUP / CAPTURE ***/
-function gotoTrial(){
+/*** TRIAL ***/
+function gotoTrialWithLoading(){
   hide(sConsent); hide(sHandoff); show(sTrial);
-  sentence.textContent = TEST_SENTENCE;
-  textarea.value = ""; textarea.focus();
-  statusEl.textContent = "Ready"; setSpin(false);
-  // reset state
-  keystrokes = []; backspaces = 0; paused500 = 0; submitting = false;
-  t0 = 0; lastT = 0;
+  setSpin(true); statusEl.textContent=`Preparing Phase ${phase}…`;
+  phaseLabel.textContent = `Phase ${phase} on ${getDevice()}`;
+  setTimeout(gotoTrial, 150); // tiny delay lets UI paint the loading state
+}
+function gotoTrial(){
+  setSpin(false); statusEl.textContent="Ready";
+  sentenceEl.textContent=TEST_SENTENCE;
+  textarea.value=""; textarea.disabled=false; textarea.focus();
+
+  // reset
+  keystrokes=[]; backspaces=0; paused500=0; submitting=false; frozen=false;
+  t0=0; lastT=0; if(rafId) cancelAnimationFrame(rafId);
+
   // start timer on first key
-  const startTimerOnce = (e)=>{
-    if (!t0) { t0 = ms(); lastT = t0; tick(); }
-    textarea.removeEventListener("keydown", startTimerOnce);
-  };
+  const startTimerOnce=(e)=>{ if(!t0){ t0=ms(); lastT=t0; tick(); } textarea.removeEventListener("keydown", startTimerOnce); };
   textarea.addEventListener("keydown", startTimerOnce, { once:true });
 
-  // capture
-  textarea.onkeydown = (e)=>{
-    const t = ms();
-    if (t0 && t - lastT >= 500) paused500++;
-    lastT = t;
-    if (e.key === "Backspace") backspaces++;
-    keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type:"keydown", key:e.key, value_len: textarea.value.length, is_mobile: getDevice()==="phone" });
+  textarea.onkeydown=(e)=>{
+    const t=ms();
+    if(t0 && t-lastT>=500) paused500++;
+    lastT=t;
+    if(e.key==="Backspace") backspaces++;
+    keystrokes.push({t_ms:t0?Math.round(t-t0):0,event_type:"keydown",key:e.key,value_len:textarea.value.length,is_mobile:getDevice()==="phone"});
   };
-  textarea.oninput = ()=>{
-    const t = ms();
-    if (t0 && t - lastT >= 500) paused500++;
-    lastT = t;
-    keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type:"input", key:"", value_len: textarea.value.length, is_mobile: getDevice()==="phone" });
-    // auto-submit as soon as it matches
-    if (!submitting && textarea.value === TEST_SENTENCE) submitTrial();
+  textarea.oninput=()=>{
+    const t=ms();
+    if(t0 && t-lastT>=500) paused500++;
+    lastT=t;
+    keystrokes.push({t_ms:t0?Math.round(t-t0):0,event_type:"input",key:"",value_len:textarea.value.length,is_mobile:getDevice()==="phone"});
+    if(!submitting && textarea.value===TEST_SENTENCE) submitTrial();
   };
-  // disable paste
-  textarea.onpaste = (e)=> e.preventDefault();
+  textarea.onpaste=(e)=>e.preventDefault();
 }
 function tick(){
-  if (!sTrial.classList.contains("hidden") && t0){
-    timerEl.textContent = `${Math.round(ms()-t0)} ms`;
-    timerRAF = requestAnimationFrame(tick);
+  if(!sTrial.classList.contains("hidden") && t0 && !frozen){
+    timerEl.textContent=`${Math.round(ms()-t0)} ms`;
+    rafId=requestAnimationFrame(tick);
   }
 }
 
 /*** SUBMIT ***/
 async function submitTrial(){
-  submitting = true;
-  textarea.disabled = true;
-  setSpin(true);
-  statusEl.textContent = "Submitting…";
+  submitting=true; textarea.disabled=true; setSpin(true); statusEl.textContent="Submitting…";
+  // stop timer now
+  frozen=true; if(rafId) cancelAnimationFrame(rafId); if(t0) timerEl.textContent=`${Math.round(ms()-t0)} ms`;
 
-  const end = ms(), total = Math.round(end - (t0||end));
-  // crude interkey stats
-  const deltas = [];
-  for (let i=1;i<keystrokes.length;i++) deltas.push(keystrokes[i].t_ms - keystrokes[i-1].t_ms);
-  const meanInter = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length) : 0;
-  const p95Inter  = deltas.length ? Math.round(deltas.sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
+  const end=ms(), total=Math.round(end-(t0||end));
+  const deltas=[]; for(let i=1;i<keystrokes.length;i++) deltas.push(keystrokes[i].t_ms-keystrokes[i-1].t_ms);
+  const mean = deltas.length?Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length):0;
+  const p95  = deltas.length?Math.round(deltas.sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]):0;
 
-  const trial_id = phase===1 ? "T1A" : "T2A";
-  const payload = {
+  const payload={
     type:"trial_summary",
     pid,
-    trial_id,
-    device: getDevice(),
-    sentence_id:"S1",
-    order_in_block:1,
-    start_ms:0,
-    end_ms: total,
-    total_ms: total,
-    mean_interkey_ms: meanInter,
-    p95_interkey_ms: p95Inter,
-    pause500_count: paused500,
-    backspace_count: backspaces,
-    ua: navigator.userAgent,
-    os:"unknown",
-    browser:"unknown",
-    screen_w: window.screen.width,
-    screen_h: window.screen.height,
-    dpr: window.devicePixelRatio,
-    paste_attempted:false,
-    focus_blur_count:0,
-    flags:"proto-v2"
+    trial_id: (phase===1?"T1A":"T2A"),
+    device:getDevice(),
+    sentence_id:"S1", order_in_block:1,
+    start_ms:0, end_ms:total, total_ms:total,
+    mean_interkey_ms:mean, p95_interkey_ms:p95,
+    pause500_count:paused500, backspace_count:backspaces,
+    ua:navigator.userAgent, os:"unknown", browser:"unknown",
+    screen_w:screen.width, screen_h:screen.height, dpr:devicePixelRatio,
+    paste_attempted:false, focus_blur_count:0, flags:"proto-v2"
   };
 
   try{
-    const r = await trialSummary(payload);
-    if (!r.ok) throw new Error(r.error || "submit failed");
+    const r=await trialSummary(payload);
+    setSpin(false);
 
-    // Decide next step
-    if (r.next === 2) { // finished phase1; handoff to phase2
-      setSpin(false);
-      statusEl.textContent = "Great! Continue on your other device.";
+    if(!r.ok) throw new Error(r.error||"submit failed");
+
+    if(r.next===2){ // finished phase 1
+      statusEl.textContent="Great! Continue on your other device.";
       showHandoff(getDevice(), 2);
-    } else if (r.next === 'done' || (r.phase1_done && r.phase2_done)) {
+    }else if(r.next==='done' || (r.phase1_done && r.phase2_done)){
       await participantEnd(pid);
       showDoneAndCycle();
-    } else {
-      // Shouldn’t happen in this minimal single-trial version
-      statusEl.textContent = "Continue…";
+    }else{
+      statusEl.textContent="Continue…";
     }
   }catch(e){
-    setSpin(false);
-    statusEl.textContent = "Network error — try again";
-    textarea.disabled = false;
-    submitting = false;
+    statusEl.textContent="Network error — try again";
+    textarea.disabled=false; submitting=false;
   }
 }
 
-/*** HANDOFF VIEW ***/
+/*** HANDOFF ***/
 function showHandoff(currentDevice, targetPhase){
-  hide(sConsent); hide(sTrial); show(sHandoff);
-  const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
-  const targetDevice = (targetPhase === 1 ? order[0] : order[1]) || "phone";
-  handoffMsg.innerHTML = `Your assigned order is <b>${order.join("→") || "?"}</b>. Please continue on your <b>${targetDevice}</b>.`;
-  const link = handoffLink(pid, deviceOrder, targetPhase);
-  handoffUrl.textContent = link;
-  qrImg.src = qrFor(link);
-  btnCopy.onclick = async ()=>{
-    try{ await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; setTimeout(()=>btnCopy.textContent="Copy link",1200); }catch{}
-  };
+  hide(sTrial); hide(sConsent); show(sHandoff);
+  const order=(deviceOrder||localStorage.getItem("ts_order")||"").split("→");
+  const target=(targetPhase===1?order[0]:order[1])||"phone";
+  handoffMsg.innerHTML=`Your assigned order is <b>${order.join("→")||"?"}</b>. Please continue on your <b>${target}</b>.`;
+  const link=handoffLink(pid, (order.join("→")||deviceOrder||""), targetPhase);
+  handoffUrl.textContent=link;
+  qrImg.src=qrFor(link);
+  btnCopy.onclick=async()=>{ try{ await navigator.clipboard.writeText(link); btnCopy.textContent="Copied!"; setTimeout(()=>btnCopy.textContent="Copy link",1200);}catch{} };
 }
 
 /*** DONE + AUTO-CYCLE ***/
 function showDoneAndCycle(){
   hide(sConsent); hide(sHandoff); hide(sTrial); show(sDone);
-  pidOut.textContent = pid;
-  // Clear local state and soft-reset after 3s for next participant
+  pidOut.textContent=pid;
   setTimeout(cycleToNewParticipant, 3000);
 }
 function cycleToNewParticipant(){
-  localStorage.removeItem("ts_pid");
-  localStorage.removeItem("ts_order");
-  // Drop any phase/order URL params
-  location.replace(baseURL());
+  localStorage.removeItem("ts_pid"); localStorage.removeItem("ts_order");
+  location.replace(baseURL()); // clean URL (drops pid/order/phase)
 }
 </script>
 </body>
