@@ -290,8 +290,13 @@
         if (!st.phase1_done && dev === first) { phase = 1; gotoTrialWithLoading(); }
         else if (st.phase1_done && !st.phase2_done && dev === second) { phase = 2; gotoTrialWithLoading(); }
         else {
-          phase = (!st.phase1_done ? 1 : 2);
-          showHandoff(dev, phase);
+          // If we’re at the wrong device for Phase 1, show a Phase 1 link but wait for Phase 2.
+          if (!st.phase1_done) {
+            showHandoff(dev, /*waitPhase*/ 2, /*linkPhase*/ 1);
+          } else {
+            // Wrong device for Phase 2 (rare): just wait for Phase 2 (and link to Phase 2)
+            showHandoff(dev, /*waitPhase*/ 2, /*linkPhase*/ 2);
+          }
         }
         // If we'd hand this device off for phase 1 and there is NO pid in the URL,
         // assume it's a stale local PID and start a fresh participant.
@@ -440,8 +445,9 @@
         if (!r.ok) throw new Error(r.error || "submit failed");
 
         if (r.next === 2) { // finished phase 1
-          statusEl.textContent = "Great! Continue on your other device.";
-          showHandoff(getDevice(), 2);
+          statusEl.textContent = "Great! Now continue on your other device (Phase 2).";
+          // On phone this hides the QR; on laptop it would show (though this path runs on phone).
+          showHandoff(getDevice(), /*waitPhase*/ 2, /*linkPhase*/ 2);
         } else if (r.next === 'done' || (r.phase1_done && r.phase2_done)) {
           await participantEnd(pid);
           showDoneAndCycle();
@@ -455,27 +461,52 @@
     }
 
     /*** HANDOFF ***/
-    function showHandoff(currentDevice, targetPhase) {
-      showEl(qrWrap);          // show QR when we genuinely want the other device
-      statusEl.textContent = ""; // ensure main status area is blank when handoff is visible
+    function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
+      // figure out which device the link should go to
+      const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
+      const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
+
+      // build link (pid + order + *linkPhase*)
+      const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), linkPhase);
+
+      // message + waiting text
+      handoffMsg.innerHTML = `Your assigned order is <b>${order.join("→") || "?"}</b>.` +
+        (waitPhase === 2
+          ? ` After finishing Phase 1 on your <b>${order[0]}</b>, this page will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
+          : ` Please continue on your <b>${linkTargetDevice}</b>.`);
+
+      waitTxt.textContent = (waitPhase === 2)
+        ? "Waiting for Phase 2 to be ready…"
+        : "Waiting for that device…";
+
+      // link UI
+      handoffUrl.textContent = link;
+      btnCopy.onclick = async () => {
+        try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
+        catch { }
+        setTimeout(() => btnCopy.textContent = "Copy link", 1200);
+      };
+
+      // 🔳 Only show QR when the current device is a laptop and the link points to a phone.
+      const shouldShowQR = (currentDevice === "laptop" && linkTargetDevice === "phone");
+      if (shouldShowQR) {
+        showEl(qrWrap);
+        // defer one tick so Safari paints the <img> first
+        setTimeout(() => { qrImg.src = qrFor(link); }, 0);
+      } else {
+        hideEl(qrWrap);
+        qrImg.removeAttribute("src");
+      }
+
+      // show the card
+      statusEl.textContent = "";
       setSpin(false);
       hide(sTrial); hide(sConsent); show(sHandoff);
-      const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
-      const target = (targetPhase === 1 ? order[0] : order[1]) || "phone";
-      handoffMsg.innerHTML = `Your assigned order is <b>${order.join("→") || "?"}</b>. Please continue on your <b>${target}</b>.`;
-      const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), targetPhase);
-      waitTxt.textContent = targetPhase === 2
-        ? "Now continue on your other device (Phase 2)…"
-        : "Waiting for that device…";
-      handoffUrl.textContent = link;
-      // Defer one tick so Safari paints the <img> before setting the src
-      setTimeout(() => { qrImg.src = qrFor(link); }, 0);
-      btnCopy.onclick = async () => { try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; setTimeout(() => btnCopy.textContent = "Copy link", 1200); } catch { } };
-      // Persist handoff so refresh stays here
-      localStorage.setItem("ts_wait_phase", String(targetPhase));
-      localStorage.setItem("ts_handoff_url", link);
 
-      startHandoffPolling(targetPhase);
+      // persist & start polling for *waitPhase*
+      localStorage.setItem("ts_wait_phase", String(waitPhase));
+      localStorage.setItem("ts_handoff_url", link);
+      startHandoffPolling(waitPhase);
     }
 
     /*** DONE + AUTO-CYCLE ***/
@@ -506,9 +537,8 @@
 
     function stopPoll() { if (pollId) { clearInterval(pollId); pollId = null; } }
 
-    function startHandoffPolling(targetPhase) {
+    function startHandoffPolling(waitPhase) {
       stopPoll();
-      // Poll the backend every 2s while the handoff card is visible
       pollId = setInterval(async () => {
         if (sHandoff.classList.contains("hidden")) { stopPoll(); return; }
 
@@ -516,14 +546,15 @@
         const [first, second] = (deviceOrder || "").split("→");
         const dev = getDevice();
 
-        // If we’re the device that should do phase 2, jump in as soon as phase 1 is done.
-        if (targetPhase === 2 && dev === second && st.phase1_done && !st.phase2_done) {
+        // If we’re waiting for Phase 2 and this device is the Phase 2 device,
+        // start as soon as Phase 1 is done.
+        if (waitPhase === 2 && dev === second && st.phase1_done && !st.phase2_done) {
           stopPoll();
           gotoTrialWithLoading();
           return;
         }
 
-        // Also: if the other device finishes everything, reset this tab automatically.
+        // If everything finished elsewhere, reset this tab.
         if (st.completed) {
           stopPoll();
           cycleToNewParticipant();
