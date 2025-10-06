@@ -219,6 +219,7 @@
     const handoffUrl = document.getElementById("handoffUrl");
     const btnCopy = document.getElementById("btnCopy");
     const qrImg = document.getElementById("qr");
+    const qrWrap = qrImg.parentElement;
     const sentenceEl = document.getElementById("sentence");
     const textarea = document.getElementById("input");
     const timerEl = document.getElementById("timer");
@@ -236,12 +237,15 @@
     let pid = null, deviceOrder = null, phase = 1;
     let t0 = 0, lastT = 0, rafId = null, frozen = false;
     let keystrokes = [], backspaces = 0, paused500 = 0, submitting = false;
+    let pollId = null;
 
     /*** UTIL ***/
     const q = new URLSearchParams(location.search);
     const ms = () => performance.now();
     const show = el => el.classList.remove("hidden");
     const hide = el => el.classList.add("hidden");
+    const hideEl = (el) => el.classList.add("hidden");
+    const showEl = (el) => el.classList.remove("hidden");
     const setSpin = on => spinEl.classList.toggle("hidden", !on);
     const getDevice = () => /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "phone" : "laptop";
     const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -324,6 +328,7 @@
         localStorage.setItem("ts_order", deviceOrder);
 
         hide(sConsent); show(sHandoff); // brief state so user sees progress
+        hideEl(qrWrap);          // hide QR while we’re just “preparing…”
         waitTxt.textContent = `Preparing Phase ${phase}…`;
 
         // 🔑 Ensure server row exists & fetch authoritative order
@@ -359,6 +364,7 @@
 
     /*** TRIAL ***/
     function gotoTrialWithLoading() {
+      stopPoll();
       hide(sConsent); hide(sHandoff); show(sTrial);
       setSpin(true); statusEl.textContent = `Preparing Phase ${phase}…`;
       phaseLabel.textContent = `Phase ${phase} on ${getDevice()}`;
@@ -450,6 +456,7 @@
 
     /*** HANDOFF ***/
     function showHandoff(currentDevice, targetPhase) {
+      showEl(qrWrap);          // show QR when we genuinely want the other device
       statusEl.textContent = ""; // ensure main status area is blank when handoff is visible
       setSpin(false);
       hide(sTrial); hide(sConsent); show(sHandoff);
@@ -467,6 +474,8 @@
       // Persist handoff so refresh stays here
       localStorage.setItem("ts_wait_phase", String(targetPhase));
       localStorage.setItem("ts_handoff_url", link);
+
+      startHandoffPolling(targetPhase);
     }
 
     /*** DONE + AUTO-CYCLE ***/
@@ -474,6 +483,7 @@
       hide(sConsent); hide(sHandoff); hide(sTrial); show(sDone);
       pidOut.textContent = pid;
       setTimeout(cycleToNewParticipant, 3000);
+      stopPoll();
     }
     function cycleToNewParticipant() {
       localStorage.removeItem("ts_pid"); localStorage.removeItem("ts_order");
@@ -492,6 +502,33 @@
       // keep “waiting” state so refresh returns here
       localStorage.setItem("ts_wait_phase", String(targetPhase));
       localStorage.setItem("ts_handoff_url", link);
+    }
+
+    function stopPoll() { if (pollId) { clearInterval(pollId); pollId = null; } }
+
+    function startHandoffPolling(targetPhase) {
+      stopPoll();
+      // Poll the backend every 2s while the handoff card is visible
+      pollId = setInterval(async () => {
+        if (sHandoff.classList.contains("hidden")) { stopPoll(); return; }
+
+        const st = await getStatus(pid);
+        const [first, second] = (deviceOrder || "").split("→");
+        const dev = getDevice();
+
+        // If we’re the device that should do phase 2, jump in as soon as phase 1 is done.
+        if (targetPhase === 2 && dev === second && st.phase1_done && !st.phase2_done) {
+          stopPoll();
+          gotoTrialWithLoading();
+          return;
+        }
+
+        // Also: if the other device finishes everything, reset this tab automatically.
+        if (st.completed) {
+          stopPoll();
+          cycleToNewParticipant();
+        }
+      }, 2000);
     }
   </script>
 </body>
