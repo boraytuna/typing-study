@@ -252,6 +252,14 @@
     const baseURL = () => location.origin + location.pathname;
     function handoffLink(pid, order, targetPhase) { const u = new URL(baseURL()); u.searchParams.set("pid", pid); u.searchParams.set("order", order); u.searchParams.set("phase", targetPhase); return u.toString(); }
     const qrFor = url => "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
+    // put this right after /*** UTIL ***/ (below getDevice)
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+    const currentDevice = isMobile ? "phone" : "laptop";
+    function splitOrder(orderStr) {
+      const [firstDev, secondDev] = (orderStr || "").split("→");
+      return { firstDev, secondDev };
+    }
+
 
     /*** BACKEND ***/
     async function post(body) {
@@ -470,10 +478,13 @@
       const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), linkPhase);
 
       // message + waiting text
-      handoffMsg.innerHTML = `Your assigned order is <b>${order.join("→") || "?"}</b>.` +
-        (waitPhase === 2
-          ? ` After finishing Phase 1 on your <b>${order[0]}</b>, this page will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
-          : ` Please continue on your <b>${linkTargetDevice}</b>.`);
+      // message + waiting text
+      const orderStr = order.join("→") || "?";
+      const isWrongStartWithP1Link = (waitPhase === 2 && linkPhase === 1);
+
+      handoffMsg.innerHTML = isWrongStartWithP1Link
+        ? `Your assigned order is <b>${orderStr}</b>. After finishing Phase 1 on your <b>${order[0]}</b>, <b>this page</b> will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
+        : `Your assigned order is <b>${orderStr}</b>. Please continue on your <b>${linkTargetDevice}</b>.`;
 
       waitTxt.textContent = (waitPhase === 2)
         ? "Waiting for Phase 2 to be ready…"
@@ -488,10 +499,13 @@
       };
 
       // 🔳 Only show QR when the current device is a laptop and the link points to a phone.
-      const shouldShowQR = (currentDevice === "laptop" && linkTargetDevice === "phone");
+      const shouldShowQR =
+        (currentDevice === "laptop") &&
+        ((deviceOrder || "").split("→")[linkPhase === 1 ? 0 : 1] === "phone") &&
+        (linkPhase !== waitPhase);
+
       if (shouldShowQR) {
         showEl(qrWrap);
-        // defer one tick so Safari paints the <img> first
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
       } else {
         hideEl(qrWrap);
@@ -550,6 +564,7 @@
         // start as soon as Phase 1 is done.
         if (waitPhase === 2 && dev === second && st.phase1_done && !st.phase2_done) {
           stopPoll();
+          phase = waitPhase;
           gotoTrialWithLoading();
           return;
         }
