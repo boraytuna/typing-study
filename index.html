@@ -152,7 +152,7 @@
   </section>
 
   <section id="s-handoff" class="card hidden">
-    <h2>Start on your other device</h2>
+    <h2 id="handoffTitle">Start on your other device</h2>
     <p id="handoffMsg" class="muted"></p>
     <div class="linkbox">
       <div class="mono" id="handoffUrl" style="word-break:break-all"></div>
@@ -455,7 +455,8 @@
         if (r.next === 2) { // finished phase 1
           statusEl.textContent = "Great! Now continue on your other device (Phase 2).";
           // On phone this hides the QR; on laptop it would show (though this path runs on phone).
-          showHandoff(getDevice(), /*waitPhase*/ 2, /*linkPhase*/ 2);
+          statusEl.textContent = "Great! Phase 1 complete. This page will help you continue on your other device.";
+          (getDevice(), /*waitPhase*/ 2, /*linkPhase*/ 2);
         } else if (r.next === 'done' || (r.phase1_done && r.phase2_done)) {
           await participantEnd(pid);
           showDoneAndCycle();
@@ -470,27 +471,34 @@
 
     /*** HANDOFF ***/
     function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
-      // figure out which device the link should go to
+      // Which device does the link point to?
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
       const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
 
-      // build link (pid + order + *linkPhase*)
+      // Build link (pid + order + *linkPhase*)
       const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), linkPhase);
 
-      // message + waiting text
-      // message + waiting text
+      // Decide if this is the special case: wrong start device → send them to Phase 1,
+      // while *this* page will auto-switch to Phase 2 when P1 finishes elsewhere.
       const orderStr = order.join("→") || "?";
       const isWrongStartWithP1Link = (waitPhase === 2 && linkPhase === 1);
 
+      // Dynamic title (“Start…” before Phase 1 vs “Continue…” around Phase 2)
+      const handoffTitle = document.getElementById("handoffTitle");
+      handoffTitle.textContent = linkPhase === 1 ? "Start on your other device"
+        : "Continue on your other device";
+
+      // Main message
       handoffMsg.innerHTML = isWrongStartWithP1Link
         ? `Your assigned order is <b>${orderStr}</b>. After finishing Phase 1 on your <b>${order[0]}</b>, <b>this page</b> will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
         : `Your assigned order is <b>${orderStr}</b>. Please continue on your <b>${linkTargetDevice}</b>.`;
 
-      waitTxt.textContent = (waitPhase === 2)
-        ? "Waiting for Phase 2 to be ready…"
-        : "Waiting for that device…";
+      // “Waiting…” copy
+      waitTxt.textContent = isWrongStartWithP1Link
+        ? "Waiting for Phase 1 to complete on your other device…"
+        : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting for that device…");
 
-      // link UI
+      // Link UI
       handoffUrl.textContent = link;
       btnCopy.onclick = async () => {
         try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
@@ -498,26 +506,29 @@
         setTimeout(() => btnCopy.textContent = "Copy link", 1200);
       };
 
-      // 🔳 Only show QR when the current device is a laptop and the link points to a phone.
+      // 🔳 QR visibility rules:
+      // - Only show on *laptop* (never show on phone).
+      // - Only when the link targets the *phone* (laptops can’t scan, phones can).
+      // - Never show on “preparing” views (when linkPhase == waitPhase).
       const shouldShowQR =
         (currentDevice === "laptop") &&
-        ((deviceOrder || "").split("→")[linkPhase === 1 ? 0 : 1] === "phone") &&
+        ((order[linkPhase === 1 ? 0 : 1] || "phone") === "phone") &&
         (linkPhase !== waitPhase);
 
       if (shouldShowQR) {
         showEl(qrWrap);
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
       } else {
-        hideEl(qrWrap);
+        hideEl(qrWrap);               // ← ensures QR is hidden on all “preparing” pages
         qrImg.removeAttribute("src");
       }
 
-      // show the card
+      // Show card
       statusEl.textContent = "";
       setSpin(false);
       hide(sTrial); hide(sConsent); show(sHandoff);
 
-      // persist & start polling for *waitPhase*
+      // Persist & poll for *waitPhase*
       localStorage.setItem("ts_wait_phase", String(waitPhase));
       localStorage.setItem("ts_handoff_url", link);
       startHandoffPolling(waitPhase);
