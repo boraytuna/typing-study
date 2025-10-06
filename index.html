@@ -1,89 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Typing Study — Minimal Prototype</title>
   <style>
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      max-width: 720px;
-      margin: 24px auto;
-      line-height: 1.45;
-    }
-
-    h1 {
-      font-size: 1.25rem;
-      margin-bottom: 0.25rem;
-    }
-
-    .muted {
-      color: #666;
-      font-size: 0.9rem;
-      margin-top: 0;
-    }
-
-    .card {
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 16px;
-      margin: 16px 0;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    textarea {
-      width: 100%;
-      min-height: 120px;
-      font-size: 1rem;
-    }
-
-    button {
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      background: #f7f7f7;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .row>* {
-      flex: 1;
-    }
-
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .status {
-      font-size: .95rem;
-    }
+    :root { --muted:#666; --b:#ddd; --radius:12px; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;line-height:1.45}
+    h1{font-size:1.25rem;margin-bottom:.25rem}
+    .muted{color:var(--muted);font-size:.92rem;margin:.25rem 0}
+    .card{border:1px solid var(--b);border-radius:var(--radius);padding:16px;margin:16px 0}
+    .hidden{display:none}
+    textarea{width:100%;min-height:140px;font-size:1rem}
+    button{padding:10px 14px;border-radius:10px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:8px;align-items:center}
+    .row>*{flex:1}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .center{display:flex;align-items:center;gap:10px}
+    .pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--b);border-radius:999px;padding:.25rem .6rem .25rem .35rem}
+    .loader{width:14px;height:14px;border:2px solid #bbb;border-top-color:#444;border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .linkbox{border:1px dashed var(--b);border-radius:10px;padding:10px;margin-top:8px;background:#fafafa}
+    img.qr{width:140px;height:140px;border:1px solid var(--b);border-radius:8px}
+    .ok{color:#137333}
+    .warn{color:#b06000}
   </style>
 </head>
-
 <body>
   <h1>Typing Study — Minimal Prototype</h1>
-  <p class="muted">One page, one sentence. We’ll expand after verifying the full flow.</p>
+  <p class="muted">One page, two devices. The page will guide the right device and step automatically.</p>
 
-  <!-- Section 1: Consent + Start -->
+  <!-- Consent -->
   <section id="s-consent" class="card">
     <h2>Consent</h2>
     <p>This prototype records timing for a single sentence. No personal info is collected.</p>
-    <label><input id="agree" type="checkbox" /> I am 18–22 or 40–55 and I consent.</label>
-    <div class="row" style="margin-top: 12px;">
+    <label class="center" style="gap:.6rem">
+      <input id="agree" type="checkbox" />
+      I am 18–22 or 40–55 and I consent.
+    </label>
+    <div class="row" style="margin-top:12px">
       <select id="ageGroup">
         <option value="">Age group…</option>
         <option>18–22</option>
@@ -91,353 +47,337 @@
       </select>
       <button id="btnStart" disabled>Start</button>
     </div>
-    <div class="row" style="margin-top:8px;">
-      <button id="btnNew">New participant (reset)</button>
-      <div id="startStatus" class="status mono" style="text-align:right;"></div>
-    </div>
-    <p id="startInfo" class="mono"></p>
+    <p id="startInfo" class="mono muted"></p>
   </section>
 
-  <!-- Section 1.5: Switch Device (Phase 1) -->
-  <section id="s-switch1" class="card hidden">
+  <!-- Handoff -->
+  <section id="s-handoff" class="card hidden">
     <h2>Start on your other device</h2>
-    <p id="switchMsg1"></p>
-    <p>Open this link on your other device to continue:</p>
-    <p class="mono" id="continueLink1"></p>
-    <div style="margin-top:10px;"><img id="qr1" alt="QR code to continue" /></div>
+    <p id="handoffMsg" class="muted"></p>
+    <div class="linkbox">
+      <div class="mono" id="handoffUrl" style="word-break:break-all"></div>
+      <div class="center" style="margin-top:8px;justify-content:flex-start">
+        <button id="btnCopy">Copy link</button>
+        <div class="pill"><span class="loader"></span><span class="muted">Waiting for that device…</span></div>
+      </div>
+    </div>
+    <div class="center" style="gap:16px;margin-top:10px">
+      <img id="qr" class="qr" alt="QR code to open on the other device"/>
+      <div class="muted">Scan this QR with your other device’s camera.</div>
+    </div>
   </section>
 
-  <!-- Section 2: Trial -->
+  <!-- Trial -->
   <section id="s-trial" class="card hidden">
     <h2>Type Exactly What You See</h2>
     <p id="sentence" class="mono"></p>
     <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-      placeholder="Type the sentence here. Auto-submits when it matches exactly."></textarea>
-    <div class="row" style="margin-top: 8px;">
-      <button id="btnSubmit" disabled>Submit (auto / Enter)</button>
-      <div id="timer" class="mono" style="text-align:right;">0 ms</div>
+              placeholder="Type the sentence here. It will submit automatically."></textarea>
+    <div class="row" style="margin-top:8px">
+      <div class="pill"><span id="spin" class="loader hidden"></span><span id="status" class="muted">Ready</span></div>
+      <div id="timer" class="mono" style="text-align:right">0 ms</div>
     </div>
-    <p id="help" class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
-    <div id="trialStatus" class="status mono"></div>
+    <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
   </section>
 
-  <!-- Section 2.5: Handoff to second device (after first device finishes) -->
-  <section id="s-switch2" class="card hidden">
-    <h2>Continue on your other device</h2>
-    <p id="switchMsg2"></p>
-    <p>Open this link on your other device to finish:</p>
-    <p class="mono" id="continueLink2"></p>
-    <div style="margin-top:10px;"><img id="qr2" alt="QR code for phase 2" /></div>
-  </section>
-
-  <!-- Section 3: Done -->
+  <!-- Done -->
   <section id="s-done" class="card hidden">
-    <h2>Done ✅</h2>
+    <h2 class="ok">Done ✅</h2>
     <p>Thanks! Data sent. Your participant ID:</p>
     <p class="mono" id="pidOut"></p>
-    <p class="muted">You can close this tab.</p>
+    <p class="muted">This page will reset for the next participant automatically.</p>
   </section>
 
-  <script>
-    /********** CONFIG **********/
-    const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
-    const SECRET = "h33iy43brfu3hf93fhb3fi3ivh3v";
-    const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
+<script>
+/*** CONFIG — change if your deployment differs ***/
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
+const SECRET   = "h33iy43brfu3hf93fhb3fi3ivh3v";
 
-    /********** ENV & HELPERS **********/
-    const IS_MOBILE = /Mobi|Android/i.test(navigator.userAgent);
-    const DEVICE_NOW = IS_MOBILE ? "phone" : "laptop";
-    const DEVICE_OTHER = IS_MOBILE ? "laptop" : "phone";
-    const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const show = (el) => el.classList.remove("hidden");
-    const hide = (el) => el.classList.add("hidden");
-    const ms = () => performance.now();
-    const parseOrder = s => (s || "").split("→"); // ["phone","laptop"]
-    const qs = new URLSearchParams(location.search);
-    const urlPhase = (qs.get("phase") === "2" ? 2 : 1);
-    const makeUrl = (pid, order, phase) => location.origin + location.pathname +
-      "?pid=" + encodeURIComponent(pid) +
-      (order ? "&order=" + encodeURIComponent(order) : "") +
-      (phase ? "&phase=" + phase : "");
+/*** SENTENCE (placeholder – we’ll swap in your set later) ***/
+const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
 
-    // DOM
-    const sConsent = document.getElementById("s-consent");
-    const sSwitch1 = document.getElementById("s-switch1");
-    const sSwitch2 = document.getElementById("s-switch2");
-    const sTrial = document.getElementById("s-trial");
-    const sDone = document.getElementById("s-done");
-    const agree = document.getElementById("agree");
-    const ageGroup = document.getElementById("ageGroup");
-    const btnStart = document.getElementById("btnStart");
-    const btnNew = document.getElementById("btnNew");
-    const startInfo = document.getElementById("startInfo");
-    const startStatus = document.getElementById("startStatus");
-    const switchMsg1 = document.getElementById("switchMsg1");
-    const continueLink1 = document.getElementById("continueLink1");
-    const qr1 = document.getElementById("qr1");
-    const switchMsg2 = document.getElementById("switchMsg2");
-    const continueLink2 = document.getElementById("continueLink2");
-    const qr2 = document.getElementById("qr2");
-    const sentence = document.getElementById("sentence");
-    const input = document.getElementById("input");
-    const btnSubmit = document.getElementById("btnSubmit");
-    const timerEl = document.getElementById("timer");
-    const pidOut = document.getElementById("pidOut");
-    const trialStatus = document.getElementById("trialStatus");
+/*** DOM ***/
+const sConsent = document.getElementById("s-consent");
+const sHandoff = document.getElementById("s-handoff");
+const sTrial   = document.getElementById("s-trial");
+const sDone    = document.getElementById("s-done");
+const agree    = document.getElementById("agree");
+const ageGroup = document.getElementById("ageGroup");
+const btnStart = document.getElementById("btnStart");
+const startInfo= document.getElementById("startInfo");
+const handoffMsg = document.getElementById("handoffMsg");
+const handoffUrl = document.getElementById("handoffUrl");
+const btnCopy  = document.getElementById("btnCopy");
+const qrImg    = document.getElementById("qr");
+const sentence = document.getElementById("sentence");
+const textarea = document.getElementById("input");
+const timerEl  = document.getElementById("timer");
+const statusEl = document.getElementById("status");
+const spinEl   = document.getElementById("spin");
+const pidOut   = document.getElementById("pidOut");
 
-    if (qs.get('reset') === '1') {
-      const oldPid = localStorage.getItem('ts_pid');
-      if (oldPid) localStorage.removeItem(`ts_started_${oldPid}`);
-      localStorage.removeItem('ts_pid');
-      localStorage.removeItem('ts_device_order');
-      localStorage.removeItem('ts_state');
-      location.replace(location.pathname); // reload without query
+/*** STATE ***/
+let pid = null;
+let deviceOrder = null;  // "phone→laptop" or "laptop→phone"
+let phase = 1;           // 1 or 2
+let t0 = 0, lastT = 0, timerRAF = null;
+let keystrokes = [], backspaces = 0, paused500 = 0;
+let submitting = false;
+
+/*** UTIL ***/
+const ms = () => performance.now();
+const show = el => el.classList.remove("hidden");
+const hide = el => el.classList.add("hidden");
+const setSpin = on => { spinEl.classList.toggle("hidden", !on); }
+const getDevice = () => (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "phone" : "laptop");
+const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const baseURL = () => location.origin + location.pathname;
+const q = new URLSearchParams(location.search);
+
+/*** BACKEND ***/
+async function post(body) {
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type":"text/plain" }, // CORS-simple
+    body: JSON.stringify({ secret: SECRET, ...body })
+  });
+  return res.json();
+}
+async function getStatus(_pid) {
+  const r = await post({ type:"status", pid:_pid });
+  return r;
+}
+async function participantStart(_pid, age_group) {
+  return post({ type:"participant_start", pid:_pid, age_group, consent_version:"v1", start_iso:new Date().toISOString() });
+}
+async function trialSummary(payload) {
+  return post({ type:"trial_summary", ...payload });
+}
+async function participantEnd(_pid) {
+  return post({ type:"participant_end", pid:_pid, end_iso:new Date().toISOString() });
+}
+
+/*** HANDOFF LINKS ***/
+function handoffLink(pid, order, targetPhase){
+  const u = new URL(baseURL());
+  u.searchParams.set("pid", pid);
+  u.searchParams.set("order", order);
+  u.searchParams.set("phase", targetPhase);
+  return u.toString();
+}
+function qrFor(url){
+  // Quick QR via Google Charts
+  return "https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=" + encodeURIComponent(url);
+}
+
+/*** CONSENT START ***/
+agree.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
+ageGroup.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
+
+btnStart.addEventListener("click", async () => {
+  if (btnStart.disabled) return;
+  btnStart.disabled = true;
+  startInfo.innerHTML = `<span class="loader"></span> contacting server…`;
+
+  // choose / adopt PID
+  const urlPid = q.get("pid");
+  pid = urlPid || localStorage.getItem("ts_pid") || uuid();
+  localStorage.setItem("ts_pid", pid);
+
+  try {
+    const r = await participantStart(pid, ageGroup.value);
+    // r.device_order is guaranteed (server assigns if missing)
+    deviceOrder = r.device_order || (r.status && r.status.device_order);
+    localStorage.setItem("ts_order", deviceOrder);
+    startInfo.textContent = `PID: ${pid} | Order: ${deviceOrder}`;
+
+    // Decide where this device belongs now
+    const dev = getDevice();
+    const order = deviceOrder.split("→");
+    const first = order[0], second = order[1];
+
+    // Check current server status (in case someone already started elsewhere)
+    const st = (r.status) ? r.status : await getStatus(pid);
+
+    // If completed or locked, immediately cycle to a fresh run
+    if (st.completed) return cycleToNewParticipant();
+
+    // Determine the phase we should run here
+    if (!st.phase1_done && dev === first) { phase = 1; gotoTrial(); }
+    else if (st.phase1_done && !st.phase2_done && dev === second) { phase = 2; gotoTrial(); }
+    else {
+      // Wrong device: show handoff card to the correct one
+      phase = (!st.phase1_done ? 1 : 2);
+      showHandoff(dev, phase);
     }
+  } catch (e) {
+    startInfo.textContent = "Error starting participant. Please refresh and try again.";
+    btnStart.disabled = false;
+  }
+});
 
-    // State
-    let pid = null;
-    let deviceOrder = null;
-    let t0 = 0, lastT = 0, started = false, finished = false;
-    let backspaces = 0, paused500 = 0;
-    let keystrokes = [];
-
-    // tiny state machine (restores after refresh)
-    const setState = (s) => localStorage.setItem("ts_state", s);
-    const getState = () => localStorage.getItem("ts_state") || "consent";
-
-    function updateStartBtn() { btnStart.disabled = !(agree.checked && ageGroup.value); }
-    agree.addEventListener("change", updateStartBtn);
-    ageGroup.addEventListener("change", updateStartBtn);
-
-    // Reset for device sharing
-    btnNew.addEventListener("click", () => {
-      const oldPid = localStorage.getItem("ts_pid");
-      if (oldPid) localStorage.removeItem(`ts_started_${oldPid}`);
-      localStorage.removeItem("ts_pid");
-      localStorage.removeItem("ts_device_order");
-      localStorage.removeItem("ts_state");
-      location.href = location.pathname; // reload without query
-    });
-
-    // Adopt ?pid&order on any device
-    (function adoptFromUrl() {
-      const pidQ = qs.get("pid");
-      const orderQ = qs.get("order");
-      if (pidQ) { pid = pidQ; localStorage.setItem("ts_pid", pid); }
-      if (orderQ) { deviceOrder = orderQ; localStorage.setItem("ts_device_order", deviceOrder); }
-    })();
-
-    // Restore UI on refresh
-    (function restore() {
-      pid = pid || localStorage.getItem("ts_pid") || null;
-      deviceOrder = deviceOrder || localStorage.getItem("ts_device_order") || null;
-
-      const state = localStorage.getItem("ts_state") || "consent";
-      const [firstDev, secondDev] = (deviceOrder || "").split("→");
-
-      // If URL says phase 2 and we are on the second device, allow trial immediately
-      if (urlPhase === 2 && secondDev && DEVICE_NOW === secondDev) {
-        hide(sConsent); show(sTrial);
-        localStorage.setItem("ts_state", "trial");
-        setupTrial();
-        return;
-      }
-
-      if (state === "switch1") {
-        const [firstDev] = parseOrder(deviceOrder || "");
-        if (firstDev && firstDev !== DEVICE_NOW) {
-          const url = makeUrl(pid, deviceOrder, 1);
-          hide(sConsent); show(sSwitch1);
-          switchMsg1.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
-          continueLink1.textContent = url; continueLink1.style.userSelect = "all";
-          qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-        }
-      } else if (state === "trial") {
-        hide(sConsent); show(sTrial); setupTrial();
-      } else if (state === "switch2") {
-        const [, secondDev] = parseOrder(deviceOrder || "");
-        const url = makeUrl(pid, deviceOrder, 2);
-        hide(sConsent); show(sSwitch2);
-        switchMsg2.textContent = `Great! Now continue on your ${secondDev} to finish.`;
-        continueLink2.textContent = url; continueLink2.style.userSelect = "all";
-        qr2.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-      } else if (state === "done") {
-        hide(sConsent); show(sDone); pidOut.textContent = pid || "";
-      }
-    })();
-
-    // Start flow
-    btnStart.addEventListener("click", async () => {
-      btnStart.disabled = true; btnStart.textContent = "Starting…";
-      startStatus.textContent = "Contacting server…";
-
-      pid = pid || localStorage.getItem("ts_pid") || uuid();
-      localStorage.setItem("ts_pid", pid);
-
-      if (!deviceOrder) {
-        const coin = Math.random() < 0.5;
-        deviceOrder = coin ? (DEVICE_NOW + "→" + DEVICE_OTHER) : (DEVICE_OTHER + "→" + DEVICE_NOW);
-        localStorage.setItem("ts_device_order", deviceOrder);
-      }
-
-      startInfo.textContent = `PID: ${pid} • Assigned order: ${deviceOrder}`;
-
-      // Only send participant_start once per PID
-      const startedKey = `ts_started_${pid}`;
-      if (!localStorage.getItem(startedKey)) {
-        try {
-          const res = await fetch(ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain" },
-            body: JSON.stringify({
-              secret: SECRET,
-              type: "participant_start",
-              pid,
-              age_group: ageGroup.value,
-              device_order: deviceOrder,
-              consent_version: "v1",
-              start_iso: new Date().toISOString()
-            })
-          }).then(r => r.json());
-
-          if (res && res.ok === false && /completed/i.test(res.error || "")) {
-            startStatus.textContent = "This participant ID is already completed. Click “New participant (reset)” to start a new one.";
-            btnStart.disabled = false;
-            btnStart.textContent = "Start";
-            return; // stop the flow
-          }
-
-          localStorage.setItem(startedKey, "1");
-        } catch (e) { console.warn("participant_start failed", e); }
-      }
-
-      const [firstDev, secondDev] = parseOrder(deviceOrder);
-
-      // Enforce phase/device
-      if (urlPhase === 1 && DEVICE_NOW !== firstDev) {
-        hide(sConsent); show(sSwitch1);
-        const url = makeUrl(pid, deviceOrder, 1);
-        switchMsg1.textContent = `Your assigned order is ${deviceOrder}. Please start on your ${firstDev}.`;
-        continueLink1.textContent = url; continueLink1.style.userSelect = "all";
-        qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-        setState("switch1");
-        btnStart.textContent = "Start"; startStatus.textContent = "";
-        return;
-      }
-
-      if (urlPhase === 2 && DEVICE_NOW !== secondDev) {
-        // wrong device for phase 2 — bounce back message for clarity
-        hide(sConsent); show(sSwitch1);
-        const url = makeUrl(pid, deviceOrder, 2);
-        switchMsg1.textContent = `Phase 2 must be on your ${secondDev}. Open this on that device.`;
-        continueLink1.textContent = url; continueLink1.style.userSelect = "all";
-        qr1.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-        setState("switch1");
-        btnStart.textContent = "Start"; startStatus.textContent = "";
-        return;
-      }
-
-      hide(sConsent); show(sTrial);
-      setState("trial");
-      btnStart.textContent = "Start"; startStatus.textContent = "";
-      setupTrial();
-    });
-
-    function setupTrial() {
-      sentence.textContent = TEST_SENTENCE;
-      input.value = ""; input.disabled = false; input.focus();
-      keystrokes = []; backspaces = 0; paused500 = 0;
-      started = false; finished = false; t0 = 0; lastT = 0;
-      trialStatus.textContent = "";
-
-      const tick = () => {
-        const now = ms(); const elapsed = started ? Math.round(now - t0) : 0;
-        timerEl.textContent = `${elapsed} ms`;
-        if (!finished) requestAnimationFrame(tick);
-      }; requestAnimationFrame(tick);
-
-      input.onkeydown = onKeydown;
-      input.oninput = onInput;
-      input.onpaste = e => e.preventDefault();
-
-      input.addEventListener("input", () => {
-        const match = (input.value === TEST_SENTENCE);
-        btnSubmit.disabled = !match;
-        if (match) {
-          finished = true; input.disabled = true; trialStatus.textContent = "Submitting…";
-          setTimeout(() => { if (!sTrial.classList.contains("hidden")) btnSubmit.click(); }, 0);
-        }
-      });
-
-      btnSubmit.onclick = submitTrial;
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); if (!btnSubmit.disabled) btnSubmit.click(); }
-      });
+/*** PAGE LOAD: RESTORE / DIRECT PHASE LINKS ***/
+window.addEventListener("DOMContentLoaded", async () => {
+  // If URL carries a pid/order/phase (from QR), adopt and go straight in
+  const pidQ = q.get("pid");
+  const orderQ = q.get("order");
+  const phaseQ = Number(q.get("phase") || 0);
+  if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
+    pid = pidQ; deviceOrder = orderQ; phase = phaseQ;
+    localStorage.setItem("ts_pid", pid);
+    localStorage.setItem("ts_order", deviceOrder);
+    hide(sConsent);
+    // Make sure PID isn’t completed/locked
+    const st = await getStatus(pid);
+    if (st.completed) return showDoneAndCycle();
+    const dev = getDevice();
+    const [first, second] = deviceOrder.split("→");
+    if ((phase===1 && dev!==first) || (phase===2 && dev!==second)) {
+      // even if they opened with a phase link on the wrong device, hand them off again
+      showHandoff(dev, phase);
+      return;
     }
+    gotoTrial();
+    return;
+  }
 
-    function stampStartIfNeeded() { if (!started) { started = true; t0 = ms(); lastT = t0; } }
-    function onKeydown(e) { stampStartIfNeeded(); const t = ms(); if (t - lastT >= 500) paused500++; lastT = t; if (e.key === "Backspace") backspaces++; keystrokes.push({ event_seq: keystrokes.length + 1, t_ms: Math.round(t - t0), event_type: "keydown", key: e.key, value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE }); }
-    function onInput(e) { stampStartIfNeeded(); const t = ms(); if (t - lastT >= 500) paused500++; lastT = t; keystrokes.push({ event_seq: keystrokes.length + 1, t_ms: Math.round(t - t0), event_type: "input", key: "", value_len: input.value.length, cursor_pos: input.selectionStart, is_mobile: IS_MOBILE }); }
+  // Otherwise, normal consent screen (until Start)
+  show(sConsent);
+});
 
-    async function submitTrial() {
-      btnSubmit.disabled = true;
-      const total = started ? Math.round(ms() - t0) : 0;
-      const deltas = []; for (let i = 1; i < keystrokes.length; i++) deltas.push(keystrokes[i].t_ms - keystrokes[i - 1].t_ms);
-      const meanInter = deltas.length ? Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length) : 0;
-      const p95Inter = deltas.length ? Math.round(deltas.slice().sort((a, b) => a - b)[Math.floor(0.95 * (deltas.length - 1))]) : 0;
+/*** TRIAL SETUP / CAPTURE ***/
+function gotoTrial(){
+  hide(sConsent); hide(sHandoff); show(sTrial);
+  sentence.textContent = TEST_SENTENCE;
+  textarea.value = ""; textarea.focus();
+  statusEl.textContent = "Ready"; setSpin(false);
+  // reset state
+  keystrokes = []; backspaces = 0; paused500 = 0; submitting = false;
+  t0 = 0; lastT = 0;
+  // start timer on first key
+  const startTimerOnce = (e)=>{
+    if (!t0) { t0 = ms(); lastT = t0; tick(); }
+    textarea.removeEventListener("keydown", startTimerOnce);
+  };
+  textarea.addEventListener("keydown", startTimerOnce, { once:true });
 
-      // trial_summary
-      try {
-        await fetch(ENDPOINT, {
-          method: "POST", headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({
-            secret: SECRET, type: "trial_summary", pid,
-            trial_id: (urlPhase === 1 ? "T1A" : "T1B"),
-            device: DEVICE_NOW, sentence_id: "S1", order_in_block: (urlPhase === 1 ? 1 : 2),
-            start_ms: 0, end_ms: total, total_ms: total,
-            mean_interkey_ms: meanInter, p95_interkey_ms: p95Inter,
-            pause500_count: paused500, backspace_count: backspaces,
-            ua: navigator.userAgent, os: "unknown", browser: "unknown",
-            screen_w: screen.width, screen_h: screen.height, dpr: devicePixelRatio,
-            paste_attempted: false, focus_blur_count: 0, flags: "proto-v4"
-          })
-        }).then(r => r.json());
-      } catch (e) { console.error(e); }
+  // capture
+  textarea.onkeydown = (e)=>{
+    const t = ms();
+    if (t0 && t - lastT >= 500) paused500++;
+    lastT = t;
+    if (e.key === "Backspace") backspaces++;
+    keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type:"keydown", key:e.key, value_len: textarea.value.length, is_mobile: getDevice()==="phone" });
+  };
+  textarea.oninput = ()=>{
+    const t = ms();
+    if (t0 && t - lastT >= 500) paused500++;
+    lastT = t;
+    keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type:"input", key:"", value_len: textarea.value.length, is_mobile: getDevice()==="phone" });
+    // auto-submit as soon as it matches
+    if (!submitting && textarea.value === TEST_SENTENCE) submitTrial();
+  };
+  // disable paste
+  textarea.onpaste = (e)=> e.preventDefault();
+}
+function tick(){
+  if (!sTrial.classList.contains("hidden") && t0){
+    timerEl.textContent = `${Math.round(ms()-t0)} ms`;
+    timerRAF = requestAnimationFrame(tick);
+  }
+}
 
-      // raw keystrokes
-      try {
-        await fetch(ENDPOINT, {
-          method: "POST", headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ secret: SECRET, type: "keystrokes_batch", pid, trial_id: (urlPhase === 1 ? "T1A" : "T1B"), events: keystrokes })
-        });
-      } catch (e) { }
+/*** SUBMIT ***/
+async function submitTrial(){
+  submitting = true;
+  textarea.disabled = true;
+  setSpin(true);
+  statusEl.textContent = "Submitting…";
 
-      const [firstDev, secondDev] = parseOrder(localStorage.getItem("ts_device_order") || deviceOrder || "");
+  const end = ms(), total = Math.round(end - (t0||end));
+  // crude interkey stats
+  const deltas = [];
+  for (let i=1;i<keystrokes.length;i++) deltas.push(keystrokes[i].t_ms - keystrokes[i-1].t_ms);
+  const meanInter = deltas.length ? Math.round(deltas.reduce((a,b)=>a+b,0)/deltas.length) : 0;
+  const p95Inter  = deltas.length ? Math.round(deltas.sort((a,b)=>a-b)[Math.floor(0.95*(deltas.length-1))]) : 0;
 
-      if (urlPhase === 1) {
-        // show handoff to phase 2 (second device). Do NOT end participant yet.
-        hide(sTrial); show(sSwitch2);
-        setState("switch2");
-        const url = makeUrl(pid, deviceOrder, 2);
-        switchMsg2.textContent = `Great! Now continue on your ${secondDev} to finish.`;
-        continueLink2.textContent = url; continueLink2.style.userSelect = "all";
-        qr2.src = "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-      } else {
-        // phase 2 completes the participant
-        try {
-          await fetch(ENDPOINT, {
-            method: "POST", headers: { "Content-Type": "text/plain" },
-            body: JSON.stringify({ secret: SECRET, type: "participant_end", pid, end_iso: new Date().toISOString() })
-          });
-        } catch (e) { }
-        // clear local storage for device sharing
-        localStorage.removeItem("ts_pid");
-        localStorage.removeItem("ts_device_order");
-        localStorage.removeItem(`ts_started_${pid}`);
-        hide(sTrial); show(sDone); setState("done"); pidOut.textContent = pid;
-      }
+  const trial_id = phase===1 ? "T1A" : "T2A";
+  const payload = {
+    type:"trial_summary",
+    pid,
+    trial_id,
+    device: getDevice(),
+    sentence_id:"S1",
+    order_in_block:1,
+    start_ms:0,
+    end_ms: total,
+    total_ms: total,
+    mean_interkey_ms: meanInter,
+    p95_interkey_ms: p95Inter,
+    pause500_count: paused500,
+    backspace_count: backspaces,
+    ua: navigator.userAgent,
+    os:"unknown",
+    browser:"unknown",
+    screen_w: window.screen.width,
+    screen_h: window.screen.height,
+    dpr: window.devicePixelRatio,
+    paste_attempted:false,
+    focus_blur_count:0,
+    flags:"proto-v2"
+  };
+
+  try{
+    const r = await trialSummary(payload);
+    if (!r.ok) throw new Error(r.error || "submit failed");
+
+    // Decide next step
+    if (r.next === 2) { // finished phase1; handoff to phase2
+      setSpin(false);
+      statusEl.textContent = "Great! Continue on your other device.";
+      showHandoff(getDevice(), 2);
+    } else if (r.next === 'done' || (r.phase1_done && r.phase2_done)) {
+      await participantEnd(pid);
+      showDoneAndCycle();
+    } else {
+      // Shouldn’t happen in this minimal single-trial version
+      statusEl.textContent = "Continue…";
     }
-  </script>
+  }catch(e){
+    setSpin(false);
+    statusEl.textContent = "Network error — try again";
+    textarea.disabled = false;
+    submitting = false;
+  }
+}
+
+/*** HANDOFF VIEW ***/
+function showHandoff(currentDevice, targetPhase){
+  hide(sConsent); hide(sTrial); show(sHandoff);
+  const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
+  const targetDevice = (targetPhase === 1 ? order[0] : order[1]) || "phone";
+  handoffMsg.innerHTML = `Your assigned order is <b>${order.join("→") || "?"}</b>. Please continue on your <b>${targetDevice}</b>.`;
+  const link = handoffLink(pid, deviceOrder, targetPhase);
+  handoffUrl.textContent = link;
+  qrImg.src = qrFor(link);
+  btnCopy.onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; setTimeout(()=>btnCopy.textContent="Copy link",1200); }catch{}
+  };
+}
+
+/*** DONE + AUTO-CYCLE ***/
+function showDoneAndCycle(){
+  hide(sConsent); hide(sHandoff); hide(sTrial); show(sDone);
+  pidOut.textContent = pid;
+  // Clear local state and soft-reset after 3s for next participant
+  setTimeout(cycleToNewParticipant, 3000);
+}
+function cycleToNewParticipant(){
+  localStorage.removeItem("ts_pid");
+  localStorage.removeItem("ts_order");
+  // Drop any phase/order URL params
+  location.replace(baseURL());
+}
+</script>
 </body>
-
 </html>
