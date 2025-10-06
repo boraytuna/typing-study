@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -273,17 +273,17 @@
           phase = (!st.phase1_done ? 1 : 2);
           showHandoff(dev, phase);
         }
-        // If we'd hand this device off for phase 1 and there is NO pid in the URL,
-        // assume it's a stale local PID and start a fresh participant.
-        if (!q.get("pid") && phase === 1 && dev === first && st.phase1_done) {
-          pid = uuid();
-          localStorage.setItem("ts_pid", pid);
-          const r2 = await participantStart(pid, ageGroup.value);
-          deviceOrder = r2.device_order || (r2.status && r2.status.device_order);
-          localStorage.setItem("ts_order", deviceOrder);
-          phase = 1; gotoTrialWithLoading();
-          return;
-        }
+            // If we'd hand this device off for phase 1 and there is NO pid in the URL,
+    // assume it's a stale local PID and start a fresh participant.
+    if (!q.get("pid") && phase===1 && dev===first && st.phase1_done) {
+      pid = uuid();
+      localStorage.setItem("ts_pid", pid);
+      const r2 = await participantStart(pid, ageGroup.value);
+      deviceOrder = r2.device_order || (r2.status && r2.status.device_order);
+      localStorage.setItem("ts_order", deviceOrder);
+      phase = 1; gotoTrialWithLoading();
+      return;
+    }
       } catch (err) {
         startInfo.textContent = "Error starting. Refresh and try again.";
         btnStart.disabled = false;
@@ -462,4 +462,293 @@
   </script>
 </body>
 
+</html> -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Study — Minimal Prototype</title>
+  <style>
+    :root { --border:#ddd; --muted:#666; }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; max-width: 760px; margin: 24px auto; line-height: 1.45; padding: 0 12px; }
+    h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+    .muted { color: var(--muted); font-size: .95rem; margin: 0 0 1rem; }
+    .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin: 16px 0; }
+    .hidden { display: none; }
+    textarea { width: 100%; min-height: 140px; font-size: 1rem; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background:#f7f7f7; cursor: pointer; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .pill { border:1px solid var(--border); border-radius:999px; padding:8px 14px; display:inline-flex; align-items:center; gap:8px; }
+    .spinner { width:14px; height:14px; border:2px solid #999; border-top-color: transparent; border-radius:50%; display:inline-block; animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .qrWrap { display:flex; gap:16px; align-items:center; }
+    .qrBox { width:220px; height:220px; border:1px solid var(--border); border-radius:10px; display:flex; align-items:center; justify-content:center; }
+    .dim { opacity:.8 }
+  </style>
+</head>
+<body>
+  <h1>Typing Study — Minimal Prototype</h1>
+  <p class="muted">One page, two devices. The page will guide the right device and step automatically.</p>
+
+  <!-- Consent -->
+  <section id="s-consent" class="card">
+    <h2>Consent</h2>
+    <p class="muted">This prototype records timing for a single sentence. No personal info is collected.</p>
+    <label><input id="agree" type="checkbox" /> I am 18–22 or 40–55 and I consent.</label>
+    <div class="row" style="margin-top:12px">
+      <select id="ageGroup">
+        <option value="">Age group…</option>
+        <option>18–22</option>
+        <option>40–55</option>
+      </select>
+      <button id="btnStart" disabled>Start</button>
+    </div>
+    <p id="startInfo" class="mono"></p>
+  </section>
+
+  <!-- Handoff (generic) -->
+  <section id="s-handoff" class="card hidden">
+    <h2 id="handoffTitle">Start on your other device</h2>
+    <p id="handoffMsg" class="muted"></p>
+    <div class="card" style="background:#fafafa">
+      <div class="row" style="align-items:center">
+        <input id="handoffLink" class="mono" style="flex:1; font-size:.95rem; padding:8px; border:1px solid var(--border); border-radius:8px;" readonly />
+        <button id="btnCopy">Copy link</button>
+        <span id="waitPill" class="pill dim"><span class="spinner"></span><span id="waitText">Waiting for that device…</span></span>
+      </div>
+      <div class="qrWrap" style="margin-top:12px">
+        <div class="qrBox"><img id="qrImg" alt="QR code to open on other device" width="220" height="220"></div>
+        <div class="muted">Scan this QR with your other device’s camera.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wrong device page -->
+  <section id="s-wrong" class="card hidden">
+    <h2>Open this on your <span id="wrongDeviceTarget">other device</span></h2>
+    <p class="muted" id="wrongMsg">
+      You opened a link that’s meant for your other device. Please switch devices and use the link or QR below.
+    </p>
+    <div class="card" style="background:#fafafa">
+      <div class="row">
+        <input id="wrongLink" class="mono" style="flex:1; font-size:.95rem; padding:8px; border:1px solid var(--border); border-radius:8px;" readonly />
+        <button id="btnCopyWrong">Copy link</button>
+      </div>
+      <div class="qrWrap" style="margin-top:12px">
+        <div class="qrBox"><img id="wrongQr" alt="QR code" width="220" height="220"></div>
+        <div class="muted">Scan on your other device to continue.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trial -->
+  <section id="s-trial" class="card hidden">
+    <h2>Type Exactly What You See</h2>
+    <p id="sentence" class="mono"></p>
+    <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="Type the sentence here. It will submit automatically when it matches."></textarea>
+    <div class="row" style="margin-top:8px; justify-content:space-between">
+      <span id="statusPill" class="pill"><span class="spinner"></span><span id="phaseText">Preparing…</span></span>
+      <div id="timer" class="mono">0 ms</div>
+    </div>
+    <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
+  </section>
+
+  <!-- Done -->
+  <section id="s-done" class="card hidden">
+    <h2>Done ✅</h2>
+    <p>Thanks! Data sent. Your participant ID:</p>
+    <p class="mono" id="pidOut"></p>
+    <p class="muted">You can close this tab.</p>
+  </section>
+
+<script>
+/* ------------ CONFIG ------------ */
+const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
+const SECRET   = "h33iy43brfu3hf93fhb3fi3ivh3v";
+const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
+
+/* ------------ DOM ------------ */
+const sConsent = byId("s-consent"), sHandoff = byId("s-handoff"), sWrong = byId("s-wrong"),
+      sTrial = byId("s-trial"), sDone = byId("s-done");
+const agree = byId("agree"), ageGroup = byId("ageGroup"), btnStart = byId("btnStart"), startInfo = byId("startInfo");
+const handoffTitle = byId("handoffTitle"), handoffMsg = byId("handoffMsg"), handoffLink = byId("handoffLink"),
+      btnCopy = byId("btnCopy"), waitPill = byId("waitPill"), waitText = byId("waitText"), qrImg = byId("qrImg");
+const wrongDeviceTarget = byId("wrongDeviceTarget"), wrongMsg = byId("wrongMsg"),
+      wrongLink = byId("wrongLink"), btnCopyWrong = byId("btnCopyWrong"), wrongQr = byId("wrongQr");
+const sentence = byId("sentence"), input = byId("input"), statusPill = byId("statusPill"),
+      phaseText = byId("phaseText"), timerEl = byId("timer"), pidOut = byId("pidOut");
+
+/* ------------ State ------------ */
+const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+const DEVICE = isMobile ? "phone" : "laptop";
+let pid = null, t0 = 0, ticking = false, autoSubmitted = false;
+
+/* ------------ Helpers ------------ */
+function byId(id){ return document.getElementById(id); }
+function show(el){ el.classList.remove("hidden"); }
+function hide(el){ el.classList.add("hidden"); }
+const ms = () => performance.now();
+const uuid = () => "TS-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const qs = new URLSearchParams(location.search);
+function setQR(imgEl, url){
+  const data = encodeURIComponent(url);
+  let tries = 0;
+  const setSrc = () => {
+    imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${data}`;
+  };
+  imgEl.onerror = () => { if (++tries < 2) setTimeout(setSrc, 300); };
+  setTimeout(setSrc, 0);
+}
+async function post(type, body){
+  const res = await fetch(ENDPOINT, { method:"POST", headers:{ "Content-Type":"text/plain" }, body: JSON.stringify({ secret: SECRET, type, ...body }) });
+  return res.json();
+}
+
+/* ------------ Consent gating ------------ */
+agree.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
+ageGroup.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
+
+btnStart.addEventListener("click", async () => {
+  pid = qs.get("pid") || localStorage.getItem("ts_pid") || uuid();
+  localStorage.setItem("ts_pid", pid);
+
+  // Create or resume participant
+  const st = await post("participant_start", {
+    pid, age_group: ageGroup.value, consent_version: "v1", start_iso: new Date().toISOString()
+  });
+
+  startInfo.textContent = `PID: ${pid}`;
+  // Decide if this device runs phase 1 or we must handoff
+  const order = (st && st.device_order) || "phone→laptop";
+  const [first, second] = order.split("→");
+
+  if (DEVICE === first) {
+    startPhase(1, order);
+  } else {
+    // Handoff to the correct first device
+    renderHandoff({ order, phaseNext: 1, nowText: `Please start on your ${first}.`, waiting:true });
+  }
+});
+
+/* ------------ Routing on load (deep link & wrong device guard) ------------ */
+window.addEventListener("DOMContentLoaded", async () => {
+  // Deep-link parameters (from handoff)
+  const linkPid = qs.get("pid");
+  const linkOrder = qs.get("order");
+  const linkPhase = Number(qs.get("phase") || 0);
+
+  if (!linkPid || !linkOrder || !linkPhase) return; // normal flow (consent)
+
+  pid = linkPid; localStorage.setItem("ts_pid", pid);
+  // Ensure participant exists and order is recorded
+  await post("participant_start", { pid, start_iso: new Date().toISOString() });
+
+  const [first, second] = linkOrder.split("→");
+  const requiredDevice = linkPhase === 1 ? first : second;
+
+  // Wrong device → friendly page
+  if (DEVICE !== requiredDevice) {
+    renderWrongDevice({ required: requiredDevice, url: location.href });
+    return;
+  }
+
+  // Right device → start appropriate phase
+  startPhase(linkPhase, linkOrder);
+});
+
+/* ------------ UI render helpers ------------ */
+function renderHandoff({ order, phaseNext, nowText, waiting }) {
+  hide(sConsent); hide(sTrial); hide(sWrong); hide(sDone); show(sHandoff);
+
+  const [first, second] = order.split("→");
+  const targetDevice = phaseNext === 1 ? first : second;
+
+  handoffTitle.textContent = phaseNext === 1 ? "Start on your other device" : "Continue on your other device";
+  handoffMsg.innerHTML = (nowText || `Your assigned order is <b>${order}</b>.`)
+    + ` Please continue on your <b>${targetDevice}</b>.`;
+
+  const url = `${location.origin}${location.pathname}?pid=${encodeURIComponent(pid)}&order=${encodeURIComponent(order)}&phase=${phaseNext}`;
+  handoffLink.value = url;
+  btnCopy.onclick = () => { navigator.clipboard.writeText(url); btnCopy.textContent = "Copied!"; setTimeout(()=>btnCopy.textContent="Copy link", 1200); };
+
+  waitPill.style.display = waiting ? "inline-flex" : "none";
+  waitText.textContent = waiting ? "Waiting for that device…" : "";
+  setQR(qrImg, url);
+}
+
+function renderWrongDevice({ required, url }) {
+  hide(sConsent); hide(sTrial); hide(sHandoff); hide(sDone); show(sWrong);
+  wrongDeviceTarget.textContent = required;
+  wrongMsg.innerHTML = `This step is assigned to your <b>${required}</b>. Please open the link below on that device.`;
+  wrongLink.value = url;
+  btnCopyWrong.onclick = () => { navigator.clipboard.writeText(url); btnCopyWrong.textContent = "Copied!"; setTimeout(()=>btnCopyWrong.textContent="Copy link", 1200); };
+  setQR(wrongQr, url);
+}
+
+function startPhase(phaseNum, order) {
+  hide(sConsent); hide(sHandoff); hide(sWrong); hide(sDone); show(sTrial);
+  phaseText.textContent = `Preparing Phase ${phaseNum}…`;
+
+  // Set sentence and prep timer
+  sentence.textContent = TEST_SENTENCE;
+  input.value = ""; input.focus(); autoSubmitted = false;
+
+  // Timer starts at first key
+  ticking = false; t0 = 0;
+  const rafTick = () => { if (ticking) timerEl.textContent = `${Math.round(ms() - t0)} ms`; if(!sTrial.classList.contains("hidden")) requestAnimationFrame(rafTick); };
+  requestAnimationFrame(rafTick);
+
+  input.onkeydown = (e) => { if (!ticking) { t0 = ms(); ticking = true; } };
+  input.oninput = async () => {
+    if (autoSubmitted) return;
+    if (input.value === TEST_SENTENCE) {
+      autoSubmitted = true; // freeze timer
+      const total = Math.round(ms() - t0);
+      timerEl.textContent = `${total} ms`;
+      phaseText.textContent = "Submitting…";
+
+      const deviceStr = DEVICE;
+      const payload = {
+        pid, trial_id: phaseNum === 1 ? "T1" : "T2", device: deviceStr,
+        sentence_id: "S1", order_in_block: 1,
+        start_ms: 0, end_ms: total, total_ms: total,
+        mean_interkey_ms: 0, p95_interkey_ms: 0,
+        pause500_count: 0, backspace_count: 0,
+        ua: navigator.userAgent, os: "unknown", browser: "unknown",
+        screen_w: window.screen.width, screen_h: window.screen.height, dpr: window.devicePixelRatio,
+        paste_attempted: false, focus_blur_count: 0, flags: `proto-v2 phase${phaseNum}`
+      };
+
+      const res = await post("trial_summary", payload);
+
+      const [first, second] = order.split("→");
+      if (res && res.next === 2) {
+        // Phase 1 finished → explicit handoff card to Phase 2
+        renderHandoff({
+          order,
+          phaseNext: 2,
+          nowText: `Great — Phase 1 on your <b>${first}</b> is complete. Now switch to your <b>${second}</b> for Phase 2.`,
+          waiting: true
+        });
+      } else if (res && res.next === "done") {
+        // Phase 2 finished → end participant
+        await post("participant_end", { pid, end_iso: new Date().toISOString() });
+        hide(sTrial); show(sDone); pidOut.textContent = pid;
+        setTimeout(() => { location.href = `${location.origin}${location.pathname}`; }, 2500);
+      } else {
+        phaseText.textContent = "Saved. You can close this tab.";
+      }
+    }
+  };
+}
+
+/* ------------ Tiny utils ------------ */
+function persistWait(phase){ localStorage.setItem("ts_wait_phase", String(phase)); }
+function clearWait(){ localStorage.removeItem("ts_wait_phase"); }
+</script>
+</body>
 </html>
