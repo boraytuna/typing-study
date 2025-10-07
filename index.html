@@ -182,6 +182,7 @@
 
   <section id="s-trial" class="card hidden">
     <h2>Type Exactly What You See</h2>
+    <p id="trialHelp" class="muted"></p>
     <p id="phaseLabel" class="muted"></p>
     <p id="sentence" class="mono"></p>
     <textarea id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
@@ -204,7 +205,16 @@
     /*** CONFIG ***/
     const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
     const SECRET = "h33iy43brfu3hf93fhb3fi3ivh3v";
-    const TEST_SENTENCE = "Machine learning can analyze how fast people type under different conditions.";
+    // Sentences: 1 practice + 3 test sentences (same on both devices)
+    const SENTENCES = {
+      practice: "The quick brown fox jumps over a sleepy dog in the park.",           // practice
+      tests: [
+        "Many people find typing on a smartphone harder than on a laptop keyboard.",  // test 1
+        "Machine learning can analyze how fast people type under different conditions to improve technology accessibility.", // test 2
+        "Data collected from typing tasks can reveal patterns in human performance and guide interface design."              // test 3
+      ],
+      ids: { practice: "P", tests: ["S1", "S2", "S3"] } // IDs you’ll see in the sheet
+    };
 
     /*** DOM ***/
     const sConsent = document.getElementById("s-consent");
@@ -232,12 +242,16 @@
     const wrongMsg = document.getElementById("wrongMsg");
     const wrongUrl = document.getElementById("wrongUrl");
     const wrongQr = document.getElementById("wrongQr");
+    const trialHelp = document.getElementById("trialHelp");
 
     /*** STATE ***/
     let pid = null, deviceOrder = null, phase = 1;
     let t0 = 0, lastT = 0, rafId = null, frozen = false;
     let keystrokes = [], backspaces = 0, paused500 = 0, submitting = false;
     let pollId = null;
+    // Round control: -1 = practice, then 0,1,2 are test rounds
+    let roundIdx = -1;               // start with practice
+    const TOTAL_TEST_ROUNDS = 3;     // 3 recorded rounds per phase
 
     /*** UTIL ***/
     const q = new URLSearchParams(location.search);
@@ -381,19 +395,36 @@
       hide(sConsent); hide(sHandoff); show(sTrial);
       setSpin(true); statusEl.textContent = `Preparing Phase ${phase}…`;
       phaseLabel.textContent = `Phase ${phase} on ${getDevice()}`;
+      if (roundIdx !== -1 && phase === 1) roundIdx = roundIdx; // no-op for P1 if you arrive mid-session
       setTimeout(gotoTrial, 150); // tiny delay lets UI paint the loading state
     }
-    function gotoTrial() {
-      setSpin(false); statusEl.textContent = "Ready";
-      sentenceEl.textContent = TEST_SENTENCE;
-      textarea.value = ""; textarea.disabled = false; textarea.focus();
 
-      // reset
+    function gotoTrial() {
+      setSpin(false);
+      statusEl.textContent = "Ready";
+
+      // Set the sentence + labels for this round
+      const s = currentSentence();
+      phaseLabel.textContent = `Phase ${phase} on ${getDevice()} — ${phaseRoundLabel()}`;
+      trialHelp.textContent = s.isPractice
+        ? "Practice: type exactly what you see. When it matches, we’ll move on to Round 1."
+        : (roundIdx === 0 ? "Round 1/3: type the sentence exactly. It will submit automatically."
+          : `Round ${s.order}/3: type the sentence exactly.`);
+
+      sentenceEl.textContent = s.text;
+      textarea.value = "";
+      textarea.disabled = false;
+      textarea.focus();
+
+      // reset timers & buffers
       keystrokes = []; backspaces = 0; paused500 = 0; submitting = false; frozen = false;
       t0 = 0; lastT = 0; if (rafId) cancelAnimationFrame(rafId);
 
       // start timer on first key
-      const startTimerOnce = (e) => { if (!t0) { t0 = ms(); lastT = t0; tick(); } textarea.removeEventListener("keydown", startTimerOnce); };
+      const startTimerOnce = () => {
+        if (!t0) { t0 = ms(); lastT = t0; tick(); }
+        textarea.removeEventListener("keydown", startTimerOnce);
+      };
       textarea.addEventListener("keydown", startTimerOnce, { once: true });
 
       textarea.onkeydown = (e) => {
@@ -401,74 +432,119 @@
         if (t0 && t - lastT >= 500) paused500++;
         lastT = t;
         if (e.key === "Backspace") backspaces++;
-        keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type: "keydown", key: e.key, value_len: textarea.value.length, is_mobile: getDevice() === "phone" });
+        keystrokes.push({
+          t_ms: t0 ? Math.round(t - t0) : 0,
+          event_type: "keydown",
+          key: e.key,
+          value_len: textarea.value.length,
+          is_mobile: getDevice() === "phone"
+        });
       };
+
       textarea.oninput = () => {
         const t = ms();
         if (t0 && t - lastT >= 500) paused500++;
         lastT = t;
-        keystrokes.push({ t_ms: t0 ? Math.round(t - t0) : 0, event_type: "input", key: "", value_len: textarea.value.length, is_mobile: getDevice() === "phone" });
-        const typed = textarea.value.replace(/\s+$/, '');          // ignore trailing newline/space
-        const target = TEST_SENTENCE.replace(/\s+$/, '');
+        keystrokes.push({
+          t_ms: t0 ? Math.round(t - t0) : 0,
+          event_type: "input",
+          key: "",
+          value_len: textarea.value.length,
+          is_mobile: getDevice() === "phone"
+        });
+
+        // match against current round sentence (trim trailing space/newline)
+        const typed = textarea.value.replace(/\s+$/, "");
+        const target = currentSentence().text.replace(/\s+$/, "");
         if (!submitting && typed === target) submitTrial();
       };
+
       textarea.onpaste = (e) => e.preventDefault();
-    }
-    function tick() {
-      if (!sTrial.classList.contains("hidden") && t0 && !frozen) {
-        timerEl.textContent = `${Math.round(ms() - t0)} ms`;
-        rafId = requestAnimationFrame(tick);
-      }
     }
 
     /*** SUBMIT ***/
     async function submitTrial() {
-      submitting = true; textarea.disabled = true; setSpin(true); statusEl.textContent = "Submitting…";
-      // stop timer now
-      frozen = true; if (rafId) cancelAnimationFrame(rafId); if (t0) timerEl.textContent = `${Math.round(ms() - t0)} ms`;
+      submitting = true;
+      textarea.disabled = true;
+      setSpin(true);
+      statusEl.textContent = "Submitting…";
 
+      // stop timer now
+      frozen = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (t0) timerEl.textContent = `${Math.round(ms() - t0)} ms`;
+
+      // timing summary
       const end = ms(), total = Math.round(end - (t0 || end));
-      const deltas = []; for (let i = 1; i < keystrokes.length; i++) deltas.push(keystrokes[i].t_ms - keystrokes[i - 1].t_ms);
+      const deltas = [];
+      for (let i = 1; i < keystrokes.length; i++) deltas.push(keystrokes[i].t_ms - keystrokes[i - 1].t_ms);
       const mean = deltas.length ? Math.round(deltas.reduce((a, b) => a + b, 0) / deltas.length) : 0;
       const p95 = deltas.length ? Math.round(deltas.sort((a, b) => a - b)[Math.floor(0.95 * (deltas.length - 1))]) : 0;
 
+      const s = currentSentence();
+
+      // Practice trial: don’t send to backend—just advance to Round 1
+      if (s.isPractice) {
+        setSpin(false);
+        statusEl.textContent = "Nice! Practice done — starting Round 1…";
+        roundIdx = 0;           // begin recorded rounds
+        setTimeout(gotoTrialWithLoading, 500);
+        return;
+      }
+
+      // Recorded trial → send to backend
       const payload = {
         type: "trial_summary",
         pid,
-        trial_id: (phase === 1 ? "T1A" : "T2A"),
+        trial_id: `P${phase}-R${s.order}`,          // e.g., P1-R2
         device: getDevice(),
-        sentence_id: "S1", order_in_block: 1,
+        sentence_id: s.id,                          // S1/S2/S3
+        order_in_block: s.order,                    // 1..3 (0 was practice)
         start_ms: 0, end_ms: total, total_ms: total,
         mean_interkey_ms: mean, p95_interkey_ms: p95,
         pause500_count: paused500, backspace_count: backspaces,
         ua: navigator.userAgent, os: "unknown", browser: "unknown",
         screen_w: screen.width, screen_h: screen.height, dpr: devicePixelRatio,
-        paste_attempted: false, focus_blur_count: 0, flags: "proto-v2"
+        paste_attempted: false, focus_blur_count: 0, flags: "proto-v3"
       };
 
       try {
         const r = await trialSummary(payload);
         setSpin(false);
-
         if (!r.ok) throw new Error(r.error || "submit failed");
 
-        if (r.next === 2) { // finished phase 1
-          const devNow = getDevice();
-          const otherDev = devNow === "laptop" ? "phone" : "laptop";
-          statusEl.textContent = devNow === "laptop"
-            ? "Great! Phase 1 complete. Use the link/QR below to continue on your phone."
-            : "Great! Phase 1 complete. This page will help you continue on your other device.";
+        // More recorded rounds left in this phase?
+        if (roundIdx + 1 < TOTAL_TEST_ROUNDS) {
+          roundIdx += 1;
+          statusEl.textContent = `Saved. Starting ${roundIdx + 1 < TOTAL_TEST_ROUNDS ? `Round ${roundIdx + 1 + 1}` : "final round"}…`;
+          setTimeout(gotoTrialWithLoading, 500);
+          return;
+        }
 
+        // Phase finished (3 recorded trials)
+        // r.next already comes from backend’s phase flags. We’ll still follow your handoff logic:
+        if (r.next === 2) {
+          // Phase 1 just finished → show handoff to Phase 2
+          const devNow = getDevice();
+          statusEl.textContent = devNow === "laptop"
+            ? "Phase 1 complete. Use the link/QR below to continue on your phone."
+            : "Phase 1 complete. This page will help you continue on your other device.";
+          roundIdx = -1; // reset so Phase 2 starts with practice again
           showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
           return;
         }
 
-        // still inside submitTrial(), after the block above
         if (r.next === "done") {
+          // Phase 2 finished → close the loop
           try { await participantEnd(pid); } catch { }
-          showDoneAndCycle();            // shows “Done ✅” then resets this tab
+          showDoneAndCycle();
           return;
         }
+
+        // Fallback: if backend says still same phase (unlikely), start over safely
+        statusEl.textContent = "Saved. Preparing next step…";
+        setTimeout(gotoTrialWithLoading, 400);
+
       } catch (e) {
         statusEl.textContent = "Network error — try again";
         textarea.disabled = false; submitting = false;
@@ -552,6 +628,20 @@
       localStorage.removeItem("ts_pid"); localStorage.removeItem("ts_order");
       location.replace(baseURL()); // clean URL (drops pid/order/phase)
     }
+    function currentSentence() {
+      if (roundIdx < 0) return { text: SENTENCES.practice, id: SENTENCES.ids.practice, order: 0, isPractice: true };
+      return {
+        text: SENTENCES.tests[roundIdx],
+        id: SENTENCES.ids.tests[roundIdx],
+        order: roundIdx + 1,
+        isPractice: false
+      };
+    }
+
+    function phaseRoundLabel() {
+      if (roundIdx < 0) return "Practice";
+      return `Round ${roundIdx + 1} of ${TOTAL_TEST_ROUNDS}`;
+    }
 
     // --- WRONG DEVICE (opened a phase link on the wrong device) ---
     function showWrongDevice(targetPhase) {
@@ -598,6 +688,7 @@
           stopPoll();
           phase = waitPhase;
           gotoTrialWithLoading();
+          roundIdx = -1; // start Phase 2 with practice
           return;
         }
 
