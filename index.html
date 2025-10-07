@@ -235,8 +235,8 @@
     const handoffMsg = document.getElementById("handoffMsg");
     const handoffUrl = document.getElementById("handoffUrl");
     const btnCopy = document.getElementById("btnCopy");
-    const qrImg = document.getElementById("qr");
-    const qrWrap = qrImg.parentElement;
+    const qrImg = document.getElementById("qrImg");
+    const qrWrap = document.getElementById("qrWrap");
     const sentenceEl = document.getElementById("sentence");
     const textarea = document.getElementById("input");
     const timerEl = document.getElementById("timer");
@@ -281,6 +281,16 @@
       return { firstDev, secondDev };
     }
 
+    // ---- Facilitator reset (visit with ?reset=1) ----
+    if (q.get("reset") === "1") {
+      localStorage.removeItem("ts_pid");
+      localStorage.removeItem("ts_order");
+      localStorage.removeItem("ts_wait_phase");
+      localStorage.removeItem("ts_handoff_url");
+      // drop query params so the page reloads clean
+      location.replace(location.origin + location.pathname);
+    }
+
 
     /*** BACKEND ***/
     async function post(body) {
@@ -301,7 +311,8 @@
       btnStart.disabled = true;
       startInfo.innerHTML = `<span class="loader"></span> contacting server…`;
 
-      pid = q.get("pid") || localStorage.getItem("ts_pid") || uuid();
+      // If we’re starting from the consent page (no pid in URL), always mint a fresh PID
+      pid = q.get("pid") || uuid();
       localStorage.setItem("ts_pid", pid);
 
       try {
