@@ -151,21 +151,28 @@
     <p id="startInfo" class="mono muted"></p>
   </section>
 
+  <!-- Handoff card -->
   <section id="s-handoff" class="card hidden">
-    <h2 id="handoffTitle">Start on your other device</h2>
+    <h2 id="handoffTitle"></h2>
     <p id="handoffMsg" class="muted"></p>
-    <div class="linkbox">
-      <div class="mono" id="handoffUrl" style="word-break:break-all"></div>
-      <div class="center" style="margin-top:8px;justify-content:flex-start">
-        <button id="btnCopy">Copy link</button>
-        <div class="pill"><span class="loader"></span><span id="waitTxt" class="muted">Waiting for that device…</span>
+
+    <!-- QR/link row -->
+    <div class="row" style="align-items: start;">
+      <div class="grow">
+        <code id="handoffUrl" class="mono" style="word-break: break-all;"></code>
+        <div style="margin-top: 8px;">
+          <button id="btnCopy" class="btn">Copy link</button>
         </div>
       </div>
+
+      <!-- 👉 Wrap BOTH the QR image AND the caption in the same container -->
+      <div id="qrWrap" class="hidden" style="text-align:center;">
+        <img id="qrImg" alt="QR" style="width:140px;height:140px;display:block;margin:0 auto;" />
+        <div id="qrCap" class="muted" style="margin-top:6px;">Scan this QR with your other device’s camera.</div>
+      </div>
     </div>
-    <div class="center" style="gap:16px;margin-top:10px">
-      <img id="qr" class="qr" alt="QR code" />
-      <div class="muted">Scan this QR with your other device’s camera.</div>
-    </div>
+
+    <p id="waitTxt" class="muted" style="margin-top:12px;"></p>
   </section>
 
   <section id="s-wrong" class="card hidden">
@@ -399,6 +406,14 @@
       setTimeout(gotoTrial, 150); // tiny delay lets UI paint the loading state
     }
 
+    function tick() {
+      if (frozen) return;                  // stop once we submit
+      const now = ms();
+      const base = t0 || now;              // guard if somehow tick ran pre-start
+      timerEl.textContent = `${Math.round(now - base)} ms`;
+      rafId = requestAnimationFrame(tick);
+    }
+
     function gotoTrial() {
       setSpin(false);
       statusEl.textContent = "Ready";
@@ -615,16 +630,26 @@
       // - Show only on *laptop* (phones can open links directly)
       // - Show only when the link targets the *phone*
       // - Never on “preparing” views (linkPhase === waitPhase)
-      const shouldShowQR = (currentDevice === "laptop") &&
-        (linkTargetDevice === "phone") &&
-        !isPreparing;
+      // QR visibility (laptop -> phone only), and NEVER on “preparing” (linkPhase === waitPhase)
+      const shouldShowQR =
+        currentDevice === "laptop" &&
+        linkTargetDevice === "phone" &&
+        linkPhase !== waitPhase;
 
       if (shouldShowQR) {
+        // show whole wrapper (img + caption)
         showEl(qrWrap);
+        // (re)generate QR
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
+        // ensure caption text is present
+        const cap = document.getElementById("qrCap");
+        if (cap) cap.textContent = "Scan this QR with your other device’s camera.";
       } else {
+        // fully hide the wrapper so no box/space remains
         hideEl(qrWrap);
         qrImg.removeAttribute("src");
+        const cap = document.getElementById("qrCap");
+        if (cap) cap.textContent = "";
       }
 
       // Show handoff card
