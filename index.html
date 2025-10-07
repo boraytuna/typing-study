@@ -289,7 +289,7 @@
         localStorage.setItem("ts_order", deviceOrder);
         startInfo.textContent = `PID: ${pid} | Order: ${deviceOrder}`;
 
-        const dev = getDevice();
+        const dev = getDevice()
         const [first, second] = deviceOrder.split("→");
         const st = r.status || await getStatus(pid);
 
@@ -454,13 +454,19 @@
 
         if (r.next === 2) { // finished phase 1
           const devNow = getDevice();
-          // Friendlier message in the typing card
+          const otherDev = devNow === "laptop" ? "phone" : "laptop";
           statusEl.textContent = devNow === "laptop"
             ? "Great! Phase 1 complete. Use the link/QR below to continue on your phone."
             : "Great! Phase 1 complete. This page will help you continue on your other device.";
 
-          // Show the handoff card that waits for Phase 2 and links directly to Phase 2
           showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
+          return;
+        }
+
+        // still inside submitTrial(), after the block above
+        if (r.next === "done") {
+          try { await participantEnd(pid); } catch { }
+          showDoneAndCycle();            // shows “Done ✅” then resets this tab
           return;
         }
       } catch (e) {
@@ -471,51 +477,50 @@
 
     // --- HANDOFF CARD (shows link/QR, polls, and auto-switches when ready) ---
     function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
-      // Which device does the link point to?
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
-      const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
-
-      // Build link (pid + order + *linkPhase*)
       const orderStr = order.join("→") || (deviceOrder || "");
+      const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
       const link = handoffLink(pid, orderStr, linkPhase);
 
-      // Special case: wrong-start → send them to Phase 1 while this page waits for Phase 2.
       const isWrongStartWithP1Link = (waitPhase === 2 && linkPhase === 1);
+      const isP1JustFinishedOnLaptop =
+        (currentDevice === "laptop") && (linkPhase === 2) && (linkTargetDevice === "phone");
 
       // Title
       const handoffTitle = document.getElementById("handoffTitle");
-      handoffTitle.textContent = linkPhase === 1 ? "Start on your other device"
+      handoffTitle.textContent = (linkPhase === 1) ? "Start on your other device"
         : "Continue on your other device";
 
       // Message
-      handoffMsg.innerHTML = isWrongStartWithP1Link
-        ? `Your assigned order is <b>${orderStr}</b>. After finishing Phase 1 on your <b>${order[0]}</b>, <b>this page</b> will automatically switch to Phase 2 on your <b>${order[1]}</b>.`
-        : `Your assigned order is <b>${orderStr}</b>. Please continue on your <b>${linkTargetDevice}</b>.`;
+      if (isWrongStartWithP1Link) {
+        handoffMsg.innerHTML =
+          `Your assigned order is <b>${orderStr}</b>. After finishing Phase 1 on your <b>${order[0]}</b>, ` +
+          `<b>this page</b> will automatically switch to Phase 2 on your <b>${order[1]}</b>.`;
+      } else if (isP1JustFinishedOnLaptop) {
+        handoffMsg.innerHTML =
+          `Phase 1 on your <b>laptop</b> is done. Use the link (or QR) below to start Phase 2 on your <b>phone</b>.`;
+      } else {
+        handoffMsg.innerHTML =
+          `Your assigned order is <b>${orderStr}</b>. Please continue on your <b>${linkTargetDevice}</b>.`;
+      }
 
       // “Waiting…” copy
       waitTxt.textContent = isWrongStartWithP1Link
         ? "Waiting for Phase 1 to complete on your other device…"
         : (linkPhase === waitPhase
-          ? (waitPhase === 2 ? "Preparing Phase 2…" : "Preparing…")
-          : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting for that device…"));
+          ? (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Preparing…")
+          : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting…"));
 
-      // Link UI
+      // Link UI + copy button
       handoffUrl.textContent = link;
       btnCopy.onclick = async () => {
         try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
-        catch { /* no-op */ }
+        catch { }
         setTimeout(() => btnCopy.textContent = "Copy link", 1200);
       };
 
-      // QR visibility rules:
-      // - Only show on *laptop* (never on phone).
-      // - Only when the link targets the *phone* (laptops can’t scan; phones can).
-      // - Never show on “preparing” views (when linkPhase === waitPhase).
-      const shouldShowQR =
-        (currentDevice === "laptop") &&
-        ((linkTargetDevice) === "phone") &&
-        (linkPhase !== waitPhase);
-
+      // QR visibility (laptop -> phone only)
+      const shouldShowQR = (currentDevice === "laptop") && (linkTargetDevice === "phone");
       if (shouldShowQR) {
         showEl(qrWrap);
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
@@ -552,32 +557,26 @@
     function showWrongDevice(targetPhase) {
       hide(sConsent); hide(sHandoff); hide(sTrial); show(sWrong);
 
-      // Resolve order + targets
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
       const targetDevice = targetPhase === 1 ? (order[0] || "phone") : (order[1] || "laptop");
       const link = handoffLink(pid, (order.join("→") || deviceOrder || ""), targetPhase);
 
-      // Copy
       wrongMsg.innerHTML =
         `This link is for your <b>${targetDevice}</b> (Phase ${targetPhase}). ` +
         `You’re on a <b>${getDevice()}</b>. Please open it on the other device.`;
 
-      // Link text
       wrongUrl.textContent = link;
 
-      // QR visibility: only on laptop and only when the target device is phone.
       const showQR = (getDevice() === "laptop") && (targetDevice === "phone");
-      const qrBox = wrongQr.parentElement; // wrapper div around the <img>
+      const qrBox = wrongQr.parentElement;
       if (showQR) {
         showEl(qrBox);
-        // defer to allow layout before setting src
         setTimeout(() => { wrongQr.src = qrFor(link); }, 0);
       } else {
         hideEl(qrBox);
         wrongQr.removeAttribute("src");
       }
 
-      // keep “waiting” state so refresh returns here
       localStorage.setItem("ts_wait_phase", String(targetPhase));
       localStorage.setItem("ts_handoff_url", link);
     }
