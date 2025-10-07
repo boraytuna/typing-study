@@ -132,11 +132,11 @@
 
 <body>
   <h1>Typing Study — Minimal Prototype</h1>
-  <p class="muted">One page, two devices. The page will guide the right device and step automatically.</p>
+  <p class="muted">Test your typing speed on both your laptop keyboard and mobile device.</p>
 
   <section id="s-consent" class="card">
     <h2>Consent</h2>
-    <p>This prototype records timing for a single sentence. No personal info is collected.</p>
+    <p>This webpage records timing for 3 test sentences per phase(device). No personal info is collected.</p>
     <label class="center" style="gap:.6rem">
       <input id="agree" type="checkbox" /> I am 18–22 or 40–55 and I consent.
     </label>
@@ -411,6 +411,19 @@
         : (roundIdx === 0 ? "Round 1/3: type the sentence exactly. It will submit automatically."
           : `Round ${s.order}/3: type the sentence exactly.`);
 
+      // reset timers & buffers
+      keystrokes = [];
+      backspaces = 0;
+      paused500 = 0;
+      submitting = false;
+      frozen = false;
+
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      t0 = 0;
+      lastT = 0;
+      timerEl.textContent = "0 ms"; // ensure the UI resets
+
       sentenceEl.textContent = s.text;
       textarea.value = "";
       textarea.disabled = false;
@@ -562,6 +575,9 @@
       const isP1JustFinishedOnLaptop =
         (currentDevice === "laptop") && (linkPhase === 2) && (linkTargetDevice === "phone");
 
+      // Is this a “preparing” screen? (we’re waiting for this same phase)
+      const isPreparing = (linkPhase === waitPhase);
+
       // Title
       const handoffTitle = document.getElementById("handoffTitle");
       handoffTitle.textContent = (linkPhase === 1) ? "Start on your other device"
@@ -582,12 +598,12 @@
 
       // “Waiting…” copy
       waitTxt.textContent = isWrongStartWithP1Link
-        ? "Waiting for Phase 1 to complete on your other device…"
-        : (linkPhase === waitPhase
-          ? (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Preparing…")
+        ? "Waiting to complete Phase 1 on your other device…"
+        : (isPreparing
+          ? `Preparing Phase ${waitPhase}…`
           : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting…"));
 
-      // Link UI + copy button
+      // Link + copy
       handoffUrl.textContent = link;
       btnCopy.onclick = async () => {
         try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
@@ -595,8 +611,14 @@
         setTimeout(() => btnCopy.textContent = "Copy link", 1200);
       };
 
-      // QR visibility (laptop -> phone only)
-      const shouldShowQR = (currentDevice === "laptop") && (linkTargetDevice === "phone");
+      // QR visibility rules:
+      // - Show only on *laptop* (phones can open links directly)
+      // - Show only when the link targets the *phone*
+      // - Never on “preparing” views (linkPhase === waitPhase)
+      const shouldShowQR = (currentDevice === "laptop") &&
+        (linkTargetDevice === "phone") &&
+        !isPreparing;
+
       if (shouldShowQR) {
         showEl(qrWrap);
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
@@ -605,7 +627,7 @@
         qrImg.removeAttribute("src");
       }
 
-      // Show card
+      // Show handoff card
       statusEl.textContent = "";
       setSpin(false);
       hide(sTrial); hide(sConsent); show(sHandoff);
