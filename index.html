@@ -597,12 +597,12 @@
       const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
       const link = handoffLink(pid, orderStr, linkPhase);
 
+      // "Preparing" only when this device is the one that will run the linked phase
+      const isPreparing = (currentDevice === linkTargetDevice) && (linkPhase === waitPhase);
+
       const isWrongStartWithP1Link = (waitPhase === 2 && linkPhase === 1);
       const isP1JustFinishedOnLaptop =
         (currentDevice === "laptop") && (linkPhase === 2) && (linkTargetDevice === "phone");
-
-      // 👉 Treat “preparing” as: we’re waiting for the same phase we’re linking to
-      const isPreparing = (linkPhase === waitPhase);
 
       // Title
       const handoffTitle = document.getElementById("handoffTitle");
@@ -628,47 +628,45 @@
         : (isPreparing ? `Preparing Phase ${waitPhase}…`
           : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting…"));
 
-      // Link + copy
+      // Link + copy button
       handoffUrl.textContent = link;
 
-      // ✳️ Hide the Copy button on any “preparing” view
-      // (the button’s parent is the small <div> under the code block)
-      const copyWrap = btnCopy.parentElement;
+      // Hide the copy button on any "preparing" view (keeps the card clean)
+      const copyWrap = btnCopy.parentElement; // the <div> that wraps the button
       copyWrap.classList.toggle("hidden", isPreparing);
-
       btnCopy.onclick = async () => {
         try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
         catch { }
         setTimeout(() => btnCopy.textContent = "Copy link", 1200);
       };
 
-      // ✳️ QR visibility rules:
-      // - Only on *laptop*
-      // - Only when link targets the *phone*
-      // - Never on “preparing” views
-      const shouldShowQR = (currentDevice === "laptop") &&
+      // QR visibility
+      // - only on laptop
+      // - only when the link targets the phone
+      // - never on "preparing" views
+      const shouldShowQR =
+        (currentDevice === "laptop") &&
         (linkTargetDevice === "phone") &&
         !isPreparing;
 
       if (shouldShowQR) {
-        showEl(qrWrap);                      // show whole QR wrapper (image + caption)
+        showEl(qrWrap);              // shows image + caption; no empty box
         setTimeout(() => { qrImg.src = qrFor(link); }, 0);
       } else {
-        hideEl(qrWrap);                      // hide completely so no empty box remains
+        hideEl(qrWrap);
         qrImg.removeAttribute("src");
       }
 
-      // Show handoff card
+      // Show card
       statusEl.textContent = "";
       setSpin(false);
       hide(sTrial); hide(sConsent); show(sHandoff);
 
-      // Persist & poll for *waitPhase*
+      // Persist + poll for the phase we’re waiting on
       localStorage.setItem("ts_wait_phase", String(waitPhase));
       localStorage.setItem("ts_handoff_url", link);
       startHandoffPolling(waitPhase);
     }
-
 
     /*** DONE + AUTO-CYCLE ***/
     function showDoneAndCycle() {
