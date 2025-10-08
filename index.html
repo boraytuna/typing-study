@@ -379,6 +379,9 @@
         hide(sConsent); show(sHandoff); // brief state so user sees progress
         hideEl(qrWrap);          // hide QR while we’re just “preparing…”
         waitTxt.textContent = `Preparing Phase ${phase}…`;
+        // Hide the copy UI on "preparing" views (same-device load)
+        if (copyWrap) copyWrap.style.display = "none";
+        if (btnCopy) { btnCopy.style.display = "none"; btnCopy.disabled = true; }
 
         // 🔑 Ensure server row exists & fetch authoritative order
         try {
