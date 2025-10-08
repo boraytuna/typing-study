@@ -638,16 +638,26 @@
 
       // Hide the copy button whenever this device is preparing to actually run the phase.
       if (isPreparing) {
-        if (copyWrap) copyWrap.style.display = "none";
-        btnCopy.disabled = true;
+        if (copyWrap) {
+          copyWrap.style.display = "none";   // hide entire div
+        }
+        if (btnCopy) {
+          btnCopy.style.display = "none";    // also hide button itself
+          btnCopy.disabled = true;
+        }
       } else {
-        if (copyWrap) copyWrap.style.display = "";
-        btnCopy.disabled = false;
-        btnCopy.onclick = async () => {
-          try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
-          catch { }
-          setTimeout(() => (btnCopy.textContent = "Copy link"), 1200);
-        };
+        if (copyWrap) {
+          copyWrap.style.display = "";       // restore normal visibility
+        }
+        if (btnCopy) {
+          btnCopy.style.display = "";
+          btnCopy.disabled = false;
+          btnCopy.onclick = async () => {
+            try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
+            catch { }
+            setTimeout(() => (btnCopy.textContent = "Copy link"), 1200);
+          };
+        }
       }
 
       // QR visibility
