@@ -45,8 +45,6 @@ After data collection, the dataset will be analyzed statistically (ANOVA) and wi
 
 ---
 
----
-
 ## Upcoming Machine-Learning & Analysis Component
 
 The current version of this project focuses on **data collection and backend automation**.  
