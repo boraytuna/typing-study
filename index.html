@@ -161,7 +161,10 @@
       <div class="grow">
         <code id="handoffUrl" class="mono" style="word-break: break-all;"></code>
         <div style="margin-top: 8px;">
-          <button id="btnCopy" class="btn">Copy link</button>
+          <!-- inside the handoff card header row -->
+          <div id="copyWrap">
+            <button id="btnCopy" class="btn">Copy link</button>
+          </div>
         </div>
       </div>
 
@@ -250,6 +253,7 @@
     const wrongUrl = document.getElementById("wrongUrl");
     const wrongQr = document.getElementById("wrongQr");
     const trialHelp = document.getElementById("trialHelp");
+    const copyWrap = document.getElementById("copyWrap");
 
     /*** STATE ***/
     let pid = null, deviceOrder = null, phase = 1;
@@ -629,16 +633,22 @@
           : (waitPhase === 2 ? "Waiting for Phase 2 to be ready…" : "Waiting…"));
 
       // Link + copy button
+      // Link text (always useful when not preparing)
       handoffUrl.textContent = link;
 
-      // Hide the copy button on any "preparing" view (keeps the card clean)
-      const copyWrap = btnCopy.parentElement; // the <div> that wraps the button
-      copyWrap.classList.toggle("hidden", isPreparing);
-      btnCopy.onclick = async () => {
-        try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
-        catch { }
-        setTimeout(() => btnCopy.textContent = "Copy link", 1200);
-      };
+      // Hide the copy button whenever this device is preparing to actually run the phase.
+      if (isPreparing) {
+        if (copyWrap) copyWrap.style.display = "none";
+        btnCopy.disabled = true;
+      } else {
+        if (copyWrap) copyWrap.style.display = "";
+        btnCopy.disabled = false;
+        btnCopy.onclick = async () => {
+          try { await navigator.clipboard.writeText(link); btnCopy.textContent = "Copied!"; }
+          catch { }
+          setTimeout(() => (btnCopy.textContent = "Copy link"), 1200);
+        };
+      }
 
       // QR visibility
       // - only on laptop
