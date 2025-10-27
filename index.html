@@ -214,7 +214,6 @@
   <script>
     /*** CONFIG ***/
     const ENDPOINT = "https://script.google.com/macros/s/AKfycbz5dTthOWO4crOgte-hUWlIDR4bM2LgLshVOdV-BacKt606Ob8B5dKLxLHB2BalhYG0sg/exec";
-    const SECRET = "h33iy43brfu3hf93fhb3fi3ivh3v";
     // Sentences: 1 practice + 3 test sentences (same on both devices)
     const SENTENCES = {
       practice: "The quick brown fox jumps over a sleepy dog in the park.",           // practice
@@ -285,6 +284,31 @@
       return { firstDev, secondDev };
     }
 
+    // ---- Session token (per PID) ----
+    const TOK_KEY = "ts_token";
+    const PHASE_KEY = "ts_phase";
+    const ROUND_KEY = "ts_round";
+
+    function setTok(t) { if (t) localStorage.setItem(TOK_KEY, t); }
+    function getTok() { return localStorage.getItem(TOK_KEY) || ""; }
+    function clearTok() { localStorage.removeItem(TOK_KEY); }
+
+    // ---- Progress persistence (phase + roundIdx) ----
+    function saveProgress() {
+      localStorage.setItem(PHASE_KEY, String(phase));
+      localStorage.setItem(ROUND_KEY, String(roundIdx));
+    }
+    function loadProgress() {
+      const p = Number(localStorage.getItem(PHASE_KEY) || 0);
+      const r = Number(localStorage.getItem(ROUND_KEY) || -999);
+      if (p === 1 || p === 2) phase = p;
+      if (r >= -1 && r <= 2) roundIdx = r; // -1 practice, 0..2 tests
+    }
+    function clearProgress() {
+      localStorage.removeItem(PHASE_KEY);
+      localStorage.removeItem(ROUND_KEY);
+    }
+
     // ---- Facilitator reset (visit with ?reset=1) ----
     if (q.get("reset") === "1") {
       localStorage.removeItem("ts_pid");
@@ -295,16 +319,46 @@
       location.replace(location.origin + location.pathname);
     }
 
-
     /*** BACKEND ***/
     async function post(body) {
-      const r = await fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ secret: SECRET, ...body }) });
+      const r = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(body)    // no secret; backend verifies pid+session_token
+      });
       return r.json();
     }
-    const participantStart = (pid, age) => post({ type: "participant_start", pid, age_group: age, consent_version: "v1", start_iso: new Date().toISOString() });
-    const getStatus = (pid) => post({ type: "status", pid });
-    const trialSummary = (payload) => post({ type: "trial_summary", ...payload });
-    const participantEnd = (pid) => post({ type: "participant_end", pid, end_iso: new Date().toISOString() });
+
+    // participant_start (no token required; returns session_token)
+    const participantStart = (pid, age) => post({
+      type: "participant_start",
+      pid,
+      age_group: age || "",
+      consent_version: "v1",
+      start_iso: new Date().toISOString()
+    });
+
+    // status (token required)
+    const getStatus = (pid) => post({
+      type: "status",
+      pid,
+      session_token: getTok()
+    });
+
+    // trial_summary (token required)
+    const trialSummary = (payload) => post({
+      type: "trial_summary",
+      session_token: getTok(),
+      ...payload
+    });
+
+    // participant_end (token required)
+    const participantEnd = (pid) => post({
+      type: "participant_end",
+      pid,
+      session_token: getTok(),
+      end_iso: new Date().toISOString()
+    });
 
     /*** CONSENT UI ***/
     agree.addEventListener("change", () => btnStart.disabled = !(agree.checked && ageGroup.value));
@@ -321,6 +375,9 @@
 
       try {
         const r = await participantStart(pid, ageGroup.value);
+
+        if (r && r.session_token) setTok(r.session_token);
+
         deviceOrder = r.device_order || (r.status && r.status.device_order);
         localStorage.setItem("ts_order", deviceOrder);
         startInfo.textContent = `PID: ${pid} | Order: ${deviceOrder}`;
@@ -348,6 +405,9 @@
           pid = uuid();
           localStorage.setItem("ts_pid", pid);
           const r2 = await participantStart(pid, ageGroup.value);
+
+          if (r2 && r2.session_token) setTok(r2.session_token);
+
           deviceOrder = r2.device_order || (r2.status && r2.status.device_order);
           localStorage.setItem("ts_order", deviceOrder);
           phase = 1; gotoTrialWithLoading();
@@ -386,6 +446,7 @@
         // 🔑 Ensure server row exists & fetch authoritative order
         try {
           const r = await participantStart(pid, ""); // idempotent
+          if (r && r.session_token) setTok(r.session_token);
           deviceOrder = r.device_order || (r.status && r.status.device_order) || deviceOrder;
           localStorage.setItem("ts_order", deviceOrder);
         } catch (e) { }
@@ -420,8 +481,13 @@
       hide(sConsent); hide(sHandoff); show(sTrial);
       setSpin(true); statusEl.textContent = `Preparing Phase ${phase}…`;
       phaseLabel.textContent = `Phase ${phase} on ${getDevice()}`;
-      if (roundIdx !== -1 && phase === 1) roundIdx = roundIdx; // no-op for P1 if you arrive mid-session
-      setTimeout(gotoTrial, 150); // tiny delay lets UI paint the loading state
+
+      // ⤵️ resume if we crashed/refreshed mid-phase
+      loadProgress();
+      // Ensure roundIdx is valid for this phase
+      if (roundIdx < -1 || roundIdx > 2) roundIdx = -1;
+
+      setTimeout(gotoTrial, 150);
     }
 
     function tick() {
@@ -435,6 +501,7 @@
     function gotoTrial() {
       setSpin(false);
       statusEl.textContent = "Ready";
+      saveProgress();
 
       // Set the sentence + labels for this round
       const s = currentSentence();
@@ -534,6 +601,7 @@
         setSpin(false);
         statusEl.textContent = "Nice! Practice done — starting Round 1…";
         roundIdx = 0;           // begin recorded rounds
+        saveProgress();
         setTimeout(gotoTrialWithLoading, 500);
         return;
       }
@@ -562,6 +630,7 @@
         // More recorded rounds left in this phase?
         if (roundIdx + 1 < TOTAL_TEST_ROUNDS) {
           roundIdx += 1;
+          saveProgress();
           statusEl.textContent = `Saved. Starting ${roundIdx + 1 < TOTAL_TEST_ROUNDS ? `Round ${roundIdx + 1 + 1}` : "final round"}…`;
           setTimeout(gotoTrialWithLoading, 500);
           return;
@@ -576,6 +645,7 @@
             ? "Phase 1 complete. Use the link/QR below to continue on your phone."
             : "Phase 1 complete. This page will help you continue on your other device.";
           roundIdx = -1; // reset so Phase 2 starts with practice again
+          saveProgress();
           showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
           return;
         }
@@ -583,6 +653,8 @@
         if (r.next === "done") {
           // Phase 2 finished → close the loop
           try { await participantEnd(pid); } catch { }
+          clearProgress()
+          clearTok();
           showDoneAndCycle();
           return;
         }
@@ -699,8 +771,13 @@
       stopPoll();
     }
     function cycleToNewParticipant() {
-      localStorage.removeItem("ts_pid"); localStorage.removeItem("ts_order");
-      location.replace(baseURL()); // clean URL (drops pid/order/phase)
+      localStorage.removeItem("ts_pid");
+      localStorage.removeItem("ts_order");
+      localStorage.removeItem("ts_wait_phase");
+      localStorage.removeItem("ts_handoff_url");
+      clearProgress();
+      clearTok();
+      location.replace(baseURL());
     }
     function currentSentence() {
       if (roundIdx < 0) return { text: SENTENCES.practice, id: SENTENCES.ids.practice, order: 0, isPractice: true };
