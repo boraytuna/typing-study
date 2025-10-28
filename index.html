@@ -140,7 +140,7 @@
 </head>
 
 <body>
-  <h1>Typing Study — Minimal Prototype</h1>
+  <h1>Typing Study</h1>
   <p class="muted">Test your typing speed on both your laptop keyboard and mobile device.</p>
 
   <section id="s-consent" class="card hidden">
@@ -300,12 +300,30 @@
     const baseURL = () => location.origin + location.pathname;
     function handoffLink(pid, order, targetPhase) { const u = new URL(baseURL()); u.searchParams.set("pid", pid); u.searchParams.set("order", order); u.searchParams.set("phase", targetPhase); return u.toString(); }
     const qrFor = url => "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(url);
-    // put this right after /*** UTIL ***/ (below getDevice)
+
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
     const currentDevice = isMobile ? "phone" : "laptop";
     function splitOrder(orderStr) {
       const [firstDev, secondDev] = (orderStr || "").split("→");
       return { firstDev, secondDev };
+    }
+
+    // --- URL helpers ------------------------------------------------------------
+    function stripQueryParams(keys) {
+      try {
+        const url = new URL(location.href);
+        keys.forEach(k => url.searchParams.delete(k));
+        history.replaceState(null, "", url);
+      } catch { /* noop */ }
+    }
+
+    function setQueryParam(k, v) {
+      try {
+        const url = new URL(location.href);
+        if (v == null) url.searchParams.delete(k);
+        else url.searchParams.set(k, String(v));
+        history.replaceState(null, "", url);
+      } catch { /* noop */ }
     }
 
     // ---- Session token (per PID) ----
@@ -444,62 +462,6 @@
       }
     });
 
-    /*** DIRECT PHASE LINKS (from QR/handoff) ***/
-    // window.addEventListener("DOMContentLoaded", async () => {
-    //   const pidQ = q.get("pid"), orderQ = q.get("order"), phaseQ = Number(q.get("phase") || 0);
-    //   // If there is NO pid in the URL, clear any stale local session
-    //   if (!pidQ) {
-    //     localStorage.removeItem("ts_pid");
-    //     localStorage.removeItem("ts_order");
-    //     localStorage.removeItem("ts_wait_phase");
-    //     localStorage.removeItem("ts_handoff_url");
-    //   }
-    //   // If there IS a pid in the URL, it takes precedence over localStorage
-    //   // (this allows reloading the handoff link without breaking)
-    //   if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
-    //     pid = pidQ; deviceOrder = orderQ; phase = phaseQ;
-    //     localStorage.setItem("ts_pid", pid);
-    //     localStorage.setItem("ts_order", deviceOrder);
-
-    //     hide(sConsent); show(sHandoff); // brief state so user sees progress
-    //     hideEl(qrWrap);          // hide QR while we’re just “preparing…”
-    //     waitTxt.textContent = `Preparing Phase ${phase}…`;
-    //     // Hide the copy UI on "preparing" views (same-device load)
-    //     if (copyWrap) copyWrap.style.display = "none";
-    //     if (btnCopy) { btnCopy.style.display = "none"; btnCopy.disabled = true; }
-
-    //     // 🔑 Ensure server row exists & fetch authoritative order
-    //     try {
-    //       const r = await participantStart(pid, ""); // idempotent
-    //       if (r && r.session_token) setTok(r.session_token);
-    //       deviceOrder = r.device_order || (r.status && r.status.device_order) || deviceOrder;
-    //       localStorage.setItem("ts_order", deviceOrder);
-    //     } catch (e) { }
-
-    //     // If wrong device, keep handoff; otherwise go into trial
-    //     const dev = getDevice(); const [first, second] = deviceOrder.split("→");
-    //     if ((phase === 1 && dev !== first) || (phase === 2 && dev !== second)) {
-    //       // explicit “wrong device” page instead of the generic handoff card
-    //       showWrongDevice(phase);
-    //     } else {
-    //       gotoTrialWithLoading();
-    //     }
-    //     return;
-    //   }
-
-    //   // If page was refreshed while waiting, resume the handoff view
-    //   const waitPhase = Number(localStorage.getItem("ts_wait_phase") || 0);
-    //   const storedPid = localStorage.getItem("ts_pid");
-    //   const storedOrd = localStorage.getItem("ts_order");
-    //   if (!pidQ && waitPhase && storedPid && storedOrd) {
-    //     pid = storedPid; deviceOrder = storedOrd; phase = waitPhase;
-    //     showHandoff(getDevice(), waitPhase);
-    //     return;
-    //   }
-
-    //   show(sConsent);
-    // });
-
     // --- Smart resume on refresh anywhere after Start ---
     window.addEventListener("DOMContentLoaded", async () => {
       // Show boot screen immediately (consent is hidden initially)
@@ -524,24 +486,87 @@
           const r = await participantStart(pid, "");
           if (r && r.session_token) setTok(r.session_token);
 
-          // Use authoritative order if server returns it
+          // Use authoritative order + status
           const ord = (r.device_order || (r.status && r.status.device_order) || deviceOrder);
           if (ord) {
             deviceOrder = ord;
             localStorage.setItem("ts_order", deviceOrder);
           }
+          const st = r.status || await getStatus(pid);
+          if (!st || st.ok === false) throw new Error("status failed");
 
-          // Route: if wrong device for the requested phase, show “wrong device” page; else go to trial
           const { firstDev, secondDev } = splitOrder(deviceOrder);
           const devNow = currentDevice;
-          const mustBe = (phase === 1) ? firstDev : secondDev;
 
-          if (devNow !== mustBe) {
-            showWrongDevice(phase);
-          } else {
-            gotoTrialWithLoading();
+          // *** Gate the URL's phase by real server status ***
+          if (phaseQ === 1) {
+            if (st.phase1_done) {
+              // Phase 1 already finished → ignore stale ?phase=1
+              stripQueryParams(["phase"]);
+              if (!st.phase2_done) {
+                // Route to Phase 2 or its handoff
+                if (devNow === secondDev) {
+                  phase = 2;
+                  localStorage.setItem("ts_phase", "2");
+                  localStorage.setItem("ts_page", "trial");
+                  gotoTrialWithLoading();
+                } else {
+                  localStorage.setItem("ts_page", "handoff");
+                  showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
+                }
+                return;
+              } else {
+                showDoneAndCycle();
+                return;
+              }
+            } else {
+              // Phase 1 is pending → still honor ?phase=1, but only if you’re on its device
+              if (devNow !== firstDev) {
+                localStorage.setItem("ts_page", "handoff");
+                showWrongDevice(1);
+                return;
+              }
+              localStorage.setItem("ts_page", "trial");
+              phase = 1;
+              gotoTrialWithLoading();
+              return;
+            }
           }
-          return;
+
+          if (phaseQ === 2) {
+            if (st.phase2_done) {
+              // Already done; ignore stale ?phase=2
+              stripQueryParams(["phase"]);
+              showDoneAndCycle();
+              return;
+            } else if (!st.phase1_done) {
+              // Can't jump to Phase 2 before Phase 1; ignore ?phase=2 and route properly
+              stripQueryParams(["phase"]);
+              if (devNow === firstDev) {
+                localStorage.setItem("ts_page", "trial");
+                phase = 1;
+                gotoTrialWithLoading();
+              } else {
+                localStorage.setItem("ts_page", "handoff");
+                showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 1);
+              }
+              return;
+            } else {
+              // Phase 2 is pending
+              if (devNow !== secondDev) {
+                localStorage.setItem("ts_page", "handoff");
+                showWrongDevice(2);
+                return;
+              }
+              localStorage.setItem("ts_page", "trial");
+              phase = 2;
+              gotoTrialWithLoading();
+              return;
+            }
+          }
+
+          // Fallback (shouldn’t happen)
+          stripQueryParams(["phase"]);
         } catch (e) {
           // If something fails, drop into the smart resume fallback below
           console.warn("Direct-link bootstrap failed, falling back:", e);
@@ -628,6 +653,9 @@
       localStorage.setItem("ts_page", "trial");
       localStorage.setItem("ts_phase", String(phase));
       localStorage.setItem("ts_roundIdx", String(roundIdx));      // keep updated as rounds advance
+
+      localStorage.removeItem("ts_wait_phase");
+      localStorage.removeItem("ts_handoff_url");
 
       // ⤵️ resume if we crashed/refreshed mid-phase
       loadProgress();
@@ -786,13 +814,15 @@
         // Phase finished (3 recorded trials)
         // r.next already comes from backend’s phase flags. We’ll still follow your handoff logic:
         if (r.next === 2) {
-          // Phase 1 just finished → show handoff to Phase 2
           const devNow = getDevice();
           statusEl.textContent = devNow === "laptop"
             ? "Phase 1 complete. Use the link/QR below to continue on your phone."
             : "Phase 1 complete. This page will help you continue on your other device.";
           roundIdx = -1; // reset so Phase 2 starts with practice again
-          saveProgress();
+
+          // Kill stale ?phase=1 from the P1 device URL so a refresh can’t jump back into Phase 1.
+          stripQueryParams(["phase"]);
+
           showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
           return;
         }
@@ -818,6 +848,11 @@
 
     // --- HANDOFF CARD (shows link/QR, polls, and auto-switches when ready) ---
     function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
+      // NEW: this page is not a trial; remove stale ?phase=... so refresh can’t resurrect old phase.
+      stripQueryParams(["phase"]);
+      localStorage.setItem("ts_page", "handoff");
+      localStorage.removeItem("ts_roundIdx");
+
       hide(sConsent); hide(sTrial); hideBoot(); show(sHandoff);
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
       const orderStr = order.join("→") || (deviceOrder || "");
