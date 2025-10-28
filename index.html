@@ -127,6 +127,15 @@
     .warn {
       color: #b06000
     }
+
+    #s-boot {
+      transition: opacity 0.3s ease;
+    }
+
+    #s-boot.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 
@@ -134,7 +143,7 @@
   <h1>Typing Study — Minimal Prototype</h1>
   <p class="muted">Test your typing speed on both your laptop keyboard and mobile device.</p>
 
-  <section id="s-consent" class="card">
+  <section id="s-consent" class="card hidden">
     <h2>Consent</h2>
     <p>
       After you give consent and choose your age group, the server will randomly assign you
@@ -157,6 +166,11 @@
       <button id="btnStart" disabled>Start</button>
     </div>
     <p id="startInfo" class="mono muted"></p>
+  </section>
+
+  <section id="s-boot" class="card">
+    <h2>Restoring session…</h2>
+    <p class="muted">Please wait a moment.</p>
   </section>
 
   <!-- Handoff card -->
@@ -261,6 +275,8 @@
     const wrongQr = document.getElementById("wrongQr");
     const trialHelp = document.getElementById("trialHelp");
     const copyWrap = document.getElementById("copyWrap");
+    const sBoot = document.getElementById("s-boot");
+    const hideBoot = () => sBoot && sBoot.classList.add("hidden");
 
     /*** STATE ***/
     let pid = null, deviceOrder = null, phase = 1;
@@ -486,98 +502,117 @@
 
     // --- Smart resume on refresh anywhere after Start ---
     window.addEventListener("DOMContentLoaded", async () => {
-      // DOM refs you already have
-      const q = new URLSearchParams(location.search);
+      // Show boot screen immediately (consent is hidden initially)
+      // sBoot is visible by default
 
-      // Pull persisted session
-      pid = q.get("pid") || localStorage.getItem("ts_pid") || "";
-      let tok = getTok();
-      deviceOrder = q.get("order") || localStorage.getItem("ts_order") || "";
-      let phaseLS = localStorage.getItem("ts_phase");         // "1" | "2"
-      let pageLS = localStorage.getItem("ts_page");          // "handoff" | "trial" | "consent"
-      let roundLS = localStorage.getItem("ts_roundIdx");      // "-1" (practice) or 0..2
+      const pidQ = q.get("pid");
+      const orderQ = q.get("order");
+      const phaseQ = Number(q.get("phase") || 0);
 
-      // Utility from your code (already defined)
-      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-      const currentDevice = isMobile ? "phone" : "laptop";
+      // Case A: Direct phase link (other device open)
+      if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
+        try {
+          // Persist pid/order/phase locally
+          pid = pidQ;
+          deviceOrder = orderQ;
+          phase = phaseQ;
+          localStorage.setItem("ts_pid", pid);
+          localStorage.setItem("ts_order", deviceOrder);
+          localStorage.setItem("ts_phase", String(phase));
 
-      function splitOrder(s) {
-        const [firstDev, secondDev] = (s || "").split("→");
-        return { firstDev, secondDev };
+          // Mint/get token idempotently (no consent needed)
+          const r = await participantStart(pid, "");
+          if (r && r.session_token) setTok(r.session_token);
+
+          // Use authoritative order if server returns it
+          const ord = (r.device_order || (r.status && r.status.device_order) || deviceOrder);
+          if (ord) {
+            deviceOrder = ord;
+            localStorage.setItem("ts_order", deviceOrder);
+          }
+
+          // Route: if wrong device for the requested phase, show “wrong device” page; else go to trial
+          const { firstDev, secondDev } = splitOrder(deviceOrder);
+          const devNow = currentDevice;
+          const mustBe = (phase === 1) ? firstDev : secondDev;
+
+          if (devNow !== mustBe) {
+            showWrongDevice(phase);
+          } else {
+            gotoTrialWithLoading();
+          }
+          return;
+        } catch (e) {
+          // If something fails, drop into the smart resume fallback below
+          console.warn("Direct-link bootstrap failed, falling back:", e);
+        }
       }
 
-      // If we don’t have a PID+token yet, show consent as usual
-      if (!pid || !tok) {
-        // Clean slate
-        localStorage.removeItem("ts_page");
-        show(sConsent);
-        return;
-      }
-
-      // Try to restore from the server truth
+      // Case B: Smart resume (refresh or returning in the middle)
       try {
-        // getStatus must send token internally (you already updated it when we moved off the shared secret)
-        const st = await getStatus(pid);                  // { completed, device_order, phase1_done, phase2_done, phase_next }
+        pid = localStorage.getItem("ts_pid") || "";
+        deviceOrder = localStorage.getItem("ts_order") || "";
+        const tok = getTok();
+
+        if (!pid || !tok) {
+          // No session → show consent cleanly
+          hideBoot();
+          show(sConsent);
+          return;
+        }
+
+        const st = await getStatus(pid);
         if (!st || st.ok === false) throw new Error("status failed");
 
-        // Persist order if server gives it (authoritative)
+        // Persist authoritative order
         if (st.device_order) {
           deviceOrder = st.device_order;
           localStorage.setItem("ts_order", deviceOrder);
         }
-        const { firstDev, secondDev } = splitOrder(deviceOrder || "");
 
-        // If already completed, cycle
         if (st.completed) { showDoneAndCycle(); return; }
 
-        // If the user was mid–trial previously, prefer resuming the trial view
-        // (We’ll still check server flags to guard phase consistency.)
-        const preferTrial = (pageLS === "trial");
+        const { firstDev, secondDev } = splitOrder(deviceOrder);
+        const devNow = currentDevice;
 
-        // Decide where to land
+        const pageLS = localStorage.getItem("ts_page");
+        const roundLS = localStorage.getItem("ts_roundIdx");
+        const preferTrial = (pageLS === "trial");
+        if (roundLS != null) { try { roundIdx = parseInt(roundLS, 10); } catch { } }
+
         if (!st.phase1_done) {
-          // Phase 1 still pending
-          if (currentDevice === firstDev) {
-            // Resume or start Phase 1 locally
+          if (devNow === firstDev) {
             phase = 1;
-            // If you persist round index, restore it (optional)
-            if (roundLS !== null) { try { roundIdx = parseInt(roundLS, 10); } catch { } }
             localStorage.setItem("ts_phase", "1");
-            localStorage.setItem("ts_page", "trial");     // so future refreshes return here
+            localStorage.setItem("ts_page", "trial");
             gotoTrialWithLoading();
-            return;
           } else {
-            // Wrong device: hand off to Phase 1 link, wait for Phase 2 here
             localStorage.setItem("ts_page", "handoff");
-            showHandoff(currentDevice, /*waitPhase*/ 2, /*linkPhase*/ 1);
-            return;
+            showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 1);
           }
+          return;
         }
 
-        // Phase 1 is done; Phase 2 next
+        // Phase 1 done
         if (!st.phase2_done) {
-          if (currentDevice === secondDev) {
-            // Resume or start Phase 2 locally
+          if (devNow === secondDev) {
             phase = 2;
-            if (preferTrial && roundLS !== null) { try { roundIdx = parseInt(roundLS, 10); } catch { } }
             localStorage.setItem("ts_phase", "2");
             localStorage.setItem("ts_page", "trial");
             gotoTrialWithLoading();
-            return;
           } else {
-            // Wrong device: hand off to Phase 2 link and wait here
             localStorage.setItem("ts_page", "handoff");
-            showHandoff(currentDevice, /*waitPhase*/ 2, /*linkPhase*/ 2);
-            return;
+            showHandoff(devNow, /*waitPhase*/ 2, /*linkPhase*/ 2);
           }
+          return;
         }
 
-        // Fallback (shouldn’t hit because st.completed would be true)
+        // Fallback (shouldn’t happen since completed would be true)
         showDoneAndCycle();
 
       } catch (e) {
-        // If anything goes wrong, don’t trap the user—show consent to restart cleanly
         console.warn("Resume failed:", e);
+        hideBoot();
         show(sConsent);
       }
     });
@@ -586,6 +621,7 @@
     function gotoTrialWithLoading() {
       stopPoll();
       hide(sConsent); hide(sHandoff); show(sTrial);
+      hideBoot();
       setSpin(true); statusEl.textContent = `Preparing Phase ${phase}…`;
       phaseLabel.textContent = `Phase ${phase} on ${getDevice()}`;
 
@@ -782,6 +818,7 @@
 
     // --- HANDOFF CARD (shows link/QR, polls, and auto-switches when ready) ---
     function showHandoff(currentDevice, waitPhase, linkPhase = waitPhase) {
+      hide(sConsent); hide(sTrial); hideBoot(); show(sHandoff);
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
       const orderStr = order.join("→") || (deviceOrder || "");
       const linkTargetDevice = (linkPhase === 1 ? order[0] : order[1]) || "phone";
@@ -868,6 +905,7 @@
       // Show card
       statusEl.textContent = "";
       setSpin(false);
+      hideBoot();
       hide(sTrial); hide(sConsent); show(sHandoff);
 
       // Persist + poll for the phase we’re waiting on
@@ -909,6 +947,7 @@
 
     // --- WRONG DEVICE (opened a phase link on the wrong device) ---
     function showWrongDevice(targetPhase) {
+      hideBoot();
       hide(sConsent); hide(sHandoff); hide(sTrial); show(sWrong);
 
       const order = (deviceOrder || localStorage.getItem("ts_order") || "").split("→");
