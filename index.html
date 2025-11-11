@@ -155,13 +155,13 @@
       No personal information is collected.
     </p>
     <label class="center" style="gap:.6rem">
-      <input id="agree" type="checkbox" /> I am 18–22 or 40–55 and I consent.
+      <input id="agree" type="checkbox" /> I am 18–22 or 35–55 and I consent.
     </label>
     <div class="row" style="margin-top:12px">
       <select id="ageGroup">
         <option value="">Age group…</option>
         <option>18–22</option>
-        <option>40–55</option>
+        <option>35–55</option>
       </select>
       <button id="btnStart" disabled>Start</button>
     </div>
@@ -223,7 +223,12 @@
       <div class="pill"><span id="spin" class="loader hidden"></span><span id="status" class="muted">Ready</span></div>
       <div id="timer" class="mono" style="text-align:right">0 ms</div>
     </div>
-    <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.</p>
+    <p class="muted">Tip: don’t paste; type it out. Backspace is allowed.
+      If you make a mistake, just correct it and continue typing.
+      When your input matches the sentence exactly, it will submit automatically.
+      If it doesn't submit, check for extra spaces or newlines at the end.
+      You can refresh the page at any time to resume your progress.
+    </p>
   </section>
 
   <section id="s-done" class="card hidden">
@@ -681,8 +686,8 @@
       // Set the sentence + labels for this round
       const s = currentSentence();
       phaseLabel.textContent = `Phase ${phase} on ${getDevice()} — ${phaseRoundLabel()}`;
-      trialHelp.textContent = s.isPractice
-        ? "Practice: type exactly what you see. When it matches, we’ll move on to Round 1."
+      trialHelp.innerHTML = s.isPractice
+        ? "<span style='color:red; font-weight:bold;'>Practice:</span> type exactly what you see. When it matches, we’ll move on to Round 1."
         : (roundIdx === 0 ? "Round 1/3: type the sentence exactly. It will submit automatically."
           : `Round ${s.order}/3: type the sentence exactly.`);
 
