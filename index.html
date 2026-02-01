@@ -136,6 +136,43 @@
       opacity: 0;
       pointer-events: none;
     }
+
+    #sentence span {
+      white-space: pre;
+    }
+
+    .ch-ok {
+      color: #137333;
+    }
+
+    .ch-bad {
+      color: #b00020;
+      text-decoration: underline;
+    }
+
+    .ch-miss {
+      background: rgba(176, 0, 32, 0.10);
+    }
+
+    .ch-extra {
+      background: rgba(176, 0, 32, 0.10);
+      border-bottom: 2px dotted rgba(176, 0, 32, 0.7);
+    }
+
+    .ch-hint {
+      color: #666;
+    }
+
+    .ch-first {
+      background: rgba(176, 0, 32, 0.15);
+      border-radius: 3px;
+      padding: 0 1px;
+    }
+
+    .ch-case {
+      color: #b06000;
+      text-decoration: underline;
+    }
   </style>
 </head>
 
@@ -519,23 +556,6 @@
       const orderQ = q.get("order");
       const phaseQ = Number(q.get("phase") || 0);
 
-      const debug = q.get("debug_results") === "1";
-      if (debug) {
-        hideBoot();
-
-        pid = q.get("pid") || localStorage.getItem("ts_pid") || "";
-        if (!pid) { show(sConsent); return; }
-
-        // Ensure we have a valid session token for that pid
-        try {
-          const r = await participantStart(pid, "");
-          if (r && r.session_token) setTok(r.session_token);
-        } catch { }
-
-        await showResultsThenFinish();
-        return;
-      }
-
       // Case A: Direct phase link (other device open)
       if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
         try {
@@ -841,6 +861,61 @@
       return ctx;
     }
 
+    function escapeHTML(str) {
+      return str.replace(/[&<>"']/g, c => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[c]));
+    }
+
+    function renderSentenceDiff(target, typedRaw) {
+      const typed = typedRaw; // keep raw so we detect spaces and newlines
+      const tLen = target.length;
+      const iLen = typed.length;
+
+      let firstErrorSeen = false;
+
+      const out = [];
+
+      const n = Math.min(tLen, iLen);
+
+      // 1) Compare char by char for the overlap
+      for (let i = 0; i < n; i++) {
+        const tc = target[i];
+        const ic = typed[i];
+
+        if (tc === ic) {
+          out.push(`<span class="ch-ok">${escapeHTML(tc)}</span>`);
+        } else if (tc.toLowerCase() === ic.toLowerCase()) {
+          // capitalization only
+          const cls = firstErrorSeen ? "ch-case" : "ch-case ch-first";
+          out.push(`<span class="${cls}">${escapeHTML(tc)}</span>`);
+          firstErrorSeen = true;
+        } else {
+          // wrong character
+          const cls = firstErrorSeen ? "ch-bad" : "ch-bad ch-first";
+          out.push(`<span class="${cls}">${escapeHTML(tc)}</span>`);
+          firstErrorSeen = true;
+        }
+      }
+
+      // 2) Remaining target that has not been typed yet
+      for (let i = n; i < tLen; i++) {
+        out.push(`<span class="ch-hint">${escapeHTML(target[i])}</span>`);
+      }
+
+      // 3) Extra typed beyond target
+      if (iLen > tLen) {
+        const extra = typed.slice(tLen);
+        out.push(`<span class="ch-extra">${escapeHTML(extra)}</span>`);
+      }
+
+      sentenceEl.innerHTML = out.join("");
+    }
+
     /*** TRIAL ***/
     function gotoTrialWithLoading() {
       stopPoll();
@@ -898,7 +973,7 @@
       lastT = 0;
       timerEl.textContent = "0 ms"; // ensure the UI resets
 
-      sentenceEl.textContent = s.text;
+      renderSentenceDiff(s.text, "");
       textarea.value = "";
       textarea.disabled = false;
       textarea.focus();
@@ -939,6 +1014,8 @@
           value_len: textarea.value.length,
           is_mobile: getDevice() === "phone"
         });
+
+        renderSentenceDiff(currentSentence().text, textarea.value);
 
         // match against current round sentence (trim trailing space/newline)
         const typed = textarea.value.replace(/\s+$/, "");
@@ -1244,16 +1321,13 @@
       resultsWarn.classList.add("hidden");
       btnContinue.disabled = true;
 
-      const isDebug = q.get("debug_results") === "1";
 
       const wireContinue = () => {
         btnContinue.disabled = false;
         btnContinue.onclick = async () => {
           btnContinue.disabled = true;
 
-          if (!isDebug) {
-            try { await participantEnd(pid); } catch { }
-          }
+          try { await participantEnd(pid); } catch { }
 
           clearProgress();
           clearTok();
@@ -1278,11 +1352,6 @@
         sumPhone.textContent = (ph.participant_avg_ms != null && ph.percentile != null)
           ? `You: ${Math.round(ph.participant_avg_ms)} ms, ${Math.round(ph.percentile)}th percentile (n=${ph.n}).`
           : (ph.participant_avg_ms != null ? `You: ${Math.round(ph.participant_avg_ms)} ms.` : "No phone result found.");
-
-        if (isDebug) {
-          resultsWarn.textContent = "Debug mode: this will not submit completion.";
-          resultsWarn.classList.remove("hidden");
-        }
 
         wireContinue();
 
