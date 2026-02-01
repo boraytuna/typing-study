@@ -329,7 +329,7 @@
     const TOTAL_TEST_ROUNDS = 3;     // 3 recorded rounds per phase
 
     /*** UTIL ***/
-    const q = new URLSearchParams(location.search);
+    const q = new URLSearchParams(window.location.search);
     const ms = () => performance.now();
     const show = el => el.classList.remove("hidden");
     const hide = el => el.classList.add("hidden");
@@ -519,6 +519,23 @@
       const orderQ = q.get("order");
       const phaseQ = Number(q.get("phase") || 0);
 
+      const debug = q.get("debug_results") === "1";
+      if (debug) {
+        hideBoot();
+
+        pid = q.get("pid") || localStorage.getItem("ts_pid") || "";
+        if (!pid) { show(sConsent); return; }
+
+        // Ensure we have a valid session token for that pid
+        try {
+          const r = await participantStart(pid, "");
+          if (r && r.session_token) setTok(r.session_token);
+        } catch { }
+
+        await showResultsThenFinish();
+        return;
+      }
+
       // Case A: Direct phase link (other device open)
       if (pidQ && orderQ && (phaseQ === 1 || phaseQ === 2)) {
         try {
@@ -690,135 +707,138 @@
       }
     });
 
-    function fmtPct(p) {
-      if (!Number.isFinite(p)) return "";
-      return `${Math.round(p)}th percentile`;
+    // --- Comparison chart drawing ---
+    function fmtMs(v) {
+      if (!Number.isFinite(v)) return "";
+      if (v >= 10000) return (v / 1000).toFixed(1) + "s";
+      return Math.round(v) + "ms";
     }
 
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
     function drawComparisonChart(canvas, payload) {
-      const ctx = canvas.getContext("2d");
-      const w = canvas.width, h = canvas.height;
+      const ctx = setupCanvasForDPR(canvas);
+
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
       ctx.clearRect(0, 0, w, h);
+      ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textBaseline = "alphabetic";
 
-      ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-      ctx.fillStyle = "black";
-
+      // basic empty cases
       if (!payload || payload.n == null || payload.n < 1 || payload.participant_avg_ms == null) {
         ctx.fillText("No data available.", 14, 28);
         return;
       }
-
-      if (payload.n < 5 || payload.group_p50_ms == null) {
+      if (payload.n < 5 || payload.group_p25_ms == null || payload.group_p50_ms == null || payload.group_p75_ms == null) {
         ctx.fillText("Not enough comparison data yet.", 14, 28);
-        ctx.fillText(`Your average: ${Math.round(payload.participant_avg_ms)} ms`, 14, 48);
+        ctx.fillText("Your average: " + fmtMs(payload.participant_avg_ms), 14, 48);
         return;
       }
 
-      const padL = 54, padR = 18, padT = 18, padB = 34;
+      const p25 = payload.group_p25_ms;
+      const p50 = payload.group_p50_ms;
+      const p75 = payload.group_p75_ms;
+      const you = payload.participant_avg_ms;
+
+      // layout
+      const padL = 52, padR = 18, padT = 18, padB = 34;
       const innerW = w - padL - padR;
       const innerH = h - padT - padB;
+      const y0 = padT + innerH * 0.35;
+      const y1 = padT + innerH * 0.65;
+      const yMid = (y0 + y1) / 2;
 
-      const vals = [
-        payload.group_p25_ms,
-        payload.group_p50_ms,
-        payload.group_p75_ms,
-        payload.participant_avg_ms
-      ].filter(v => Number.isFinite(v));
+      // x domain: centered around IQR, padded
+      const iqr = Math.max(1, p75 - p25);
+      const domainMin = Math.min(p25 - 0.75 * iqr, you - 0.25 * iqr);
+      const domainMax = Math.max(p75 + 0.75 * iqr, you + 0.25 * iqr);
+      const span = Math.max(1, domainMax - domainMin);
 
-      const minV = Math.min(...vals);
-      const maxV = Math.max(...vals);
-      const span = Math.max(1, maxV - minV);
+      const xFor = (v) => padL + ((v - domainMin) / span) * innerW;
 
-      const xFor = (v) => padL + ((v - minV) / span) * innerW;
-      const yMid = padT + innerH / 2;
-
-      // Border
+      // frame
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
       ctx.strokeRect(padL, padT, innerW, innerH);
 
-      // IQR band
-      const x25 = xFor(payload.group_p25_ms);
-      const x75 = xFor(payload.group_p75_ms);
-      ctx.fillStyle = "rgba(0,0,0,0.08)";
-      ctx.fillRect(x25, padT + innerH * 0.25, x75 - x25, innerH * 0.5);
-
-      // Median line
-      const x50 = xFor(payload.group_p50_ms);
-      ctx.strokeStyle = "black";
+      // axis baseline
+      const yAxis = padT + innerH + 0.5;
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
       ctx.beginPath();
-      ctx.moveTo(x50, padT + innerH * 0.2);
-      ctx.lineTo(x50, padT + innerH * 0.8);
+      ctx.moveTo(padL, yAxis);
+      ctx.lineTo(padL + innerW, yAxis);
       ctx.stroke();
 
-      // Participant dot
-      const xp = xFor(payload.participant_avg_ms);
-      ctx.fillStyle = "black";
-      ctx.beginPath();
-      ctx.arc(xp, yMid, 7, 0, Math.PI * 2);
-      ctx.fill();
+      // ticks
+      const ticks = 4;
+      ctx.fillStyle = "rgba(0,0,0,0.75)";
+      for (let i = 0; i <= ticks; i++) {
+        const t = i / ticks;
+        const v = domainMin + t * span;
+        const x = padL + t * innerW;
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.beginPath();
+        ctx.moveTo(x, yAxis);
+        ctx.lineTo(x, yAxis - 6);
+        ctx.stroke();
 
-      // Labels
-      ctx.fillStyle = "black";
-      ctx.fillText("p25", x25 - 10, h - 10);
-      ctx.fillText("p50", x50 - 10, h - 10);
-      ctx.fillText("p75", x75 - 10, h - 10);
-      ctx.fillText("you", xp - 10, padT + 14);
-
-      // Min max ticks
-      ctx.fillText(String(Math.round(minV)), padL, h - 10);
-      const maxTxt = String(Math.round(maxV));
-      ctx.fillText(maxTxt, w - padR - ctx.measureText(maxTxt).width, h - 10);
-    }
-
-    async function showResultsThenFinish() {
-      stopPoll();
-      hide(sConsent); hide(sHandoff); hide(sTrial); hide(sDone);
-      hideBoot();
-      show(sResults);
-
-      btnContinue.disabled = true;
-      resultsWarn.classList.add("hidden");
-      sumLaptop.textContent = "Loading...";
-      sumPhone.textContent = "Loading...";
-
-      try {
-        const r = await getComparisonStats(pid);
-        if (!r || r.ok === false) throw new Error(r && r.error ? r.error : "stats failed");
-
-        drawComparisonChart(chartLaptop, r.laptop);
-        drawComparisonChart(chartPhone, r.phone);
-
-        if (r.laptop && r.laptop.participant_avg_ms != null) {
-          sumLaptop.textContent = (r.laptop.n >= 5 && r.laptop.percentile != null)
-            ? `You: ${Math.round(r.laptop.participant_avg_ms)} ms, ${fmtPct(r.laptop.percentile)} (n=${r.laptop.n}).`
-            : `You: ${Math.round(r.laptop.participant_avg_ms)} ms (n=${r.laptop.n}).`;
-        } else {
-          sumLaptop.textContent = "No laptop result found for you.";
-        }
-
-        if (r.phone && r.phone.participant_avg_ms != null) {
-          sumPhone.textContent = (r.phone.n >= 5 && r.phone.percentile != null)
-            ? `You: ${Math.round(r.phone.participant_avg_ms)} ms, ${fmtPct(r.phone.percentile)} (n=${r.phone.n}).`
-            : `You: ${Math.round(r.phone.participant_avg_ms)} ms (n=${r.phone.n}).`;
-        } else {
-          sumPhone.textContent = "No phone result found for you.";
-        }
-
-        btnContinue.disabled = false;
-      } catch (e) {
-        resultsWarn.textContent = "Could not load comparison charts. You can still continue.";
-        resultsWarn.classList.remove("hidden");
-        sumLaptop.textContent = "";
-        sumPhone.textContent = "";
-        btnContinue.disabled = false;
+        const label = fmtMs(v);
+        const tw = ctx.measureText(label).width;
+        ctx.fillText(label, clamp(x - tw / 2, 2, w - tw - 2), h - 10);
       }
 
-      btnContinue.onclick = async () => {
-        btnContinue.disabled = true;
-        try { await participantEnd(pid); } catch { }
-        clearProgress();
-        clearTok();
-        showDoneAndCycle();
-      };
+      // IQR band
+      const x25 = xFor(p25);
+      const x75 = xFor(p75);
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(x25, y0, x75 - x25, y1 - y0);
+
+      // median line (stronger)
+      const x50 = xFor(p50);
+      ctx.strokeStyle = "rgba(0,0,0,0.75)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x50, y0);
+      ctx.lineTo(x50, y1);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+
+      // labels for quartiles inside plot to avoid overlap
+      ctx.fillStyle = "rgba(0,0,0,0.75)";
+      ctx.fillText("p25", x25 - 14, y0 - 6);
+      ctx.fillText("median", x50 - 18, y0 - 6);
+      ctx.fillText("p75", x75 - 14, y0 - 6);
+
+      // your marker: dot + vertical guide
+      const xYou = xFor(you);
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(xYou, padT + 10);
+      ctx.lineTo(xYou, y1 + 10);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(0,0,0,0.95)";
+      ctx.beginPath();
+      ctx.arc(xYou, yMid, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      // "You" label near the dot
+      const youLabel = "You: " + fmtMs(you);
+      const lw = ctx.measureText(youLabel).width;
+      const lx = clamp(xYou - lw / 2, padL + 4, padL + innerW - lw - 4);
+      ctx.fillText(youLabel, lx, padT + 14);
+    }
+
+    function setupCanvasForDPR(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return ctx;
     }
 
     /*** TRIAL ***/
@@ -1214,6 +1234,67 @@
           cycleToNewParticipant();
         }
       }, 2000);
+    }
+
+    async function showResultsThenFinish() {
+      hide(sConsent); hide(sHandoff); hide(sTrial); hide(sDone);
+      show(sResults);
+      hideBoot();
+
+      resultsWarn.classList.add("hidden");
+      btnContinue.disabled = true;
+
+      const isDebug = q.get("debug_results") === "1";
+
+      const wireContinue = () => {
+        btnContinue.disabled = false;
+        btnContinue.onclick = async () => {
+          btnContinue.disabled = true;
+
+          if (!isDebug) {
+            try { await participantEnd(pid); } catch { }
+          }
+
+          clearProgress();
+          clearTok();
+          showDoneAndCycle();
+        };
+      };
+
+      try {
+        const r = await getComparisonStats(pid);
+        if (!r || r.ok === false) throw new Error(r && r.error ? r.error : "stats failed");
+
+        drawComparisonChart(chartLaptop, r.laptop);
+        drawComparisonChart(chartPhone, r.phone);
+
+        const lp = r.laptop || {};
+        const ph = r.phone || {};
+
+        sumLaptop.textContent = (lp.participant_avg_ms != null && lp.percentile != null)
+          ? `You: ${Math.round(lp.participant_avg_ms)} ms, ${Math.round(lp.percentile)}th percentile (n=${lp.n}).`
+          : (lp.participant_avg_ms != null ? `You: ${Math.round(lp.participant_avg_ms)} ms.` : "No laptop result found.");
+
+        sumPhone.textContent = (ph.participant_avg_ms != null && ph.percentile != null)
+          ? `You: ${Math.round(ph.participant_avg_ms)} ms, ${Math.round(ph.percentile)}th percentile (n=${ph.n}).`
+          : (ph.participant_avg_ms != null ? `You: ${Math.round(ph.participant_avg_ms)} ms.` : "No phone result found.");
+
+        if (isDebug) {
+          resultsWarn.textContent = "Debug mode: this will not submit completion.";
+          resultsWarn.classList.remove("hidden");
+        }
+
+        wireContinue();
+
+      } catch (e) {
+        resultsWarn.textContent = "Could not load comparison charts. You can still continue.";
+        resultsWarn.classList.remove("hidden");
+
+        sumLaptop.textContent = "";
+        sumPhone.textContent = "";
+
+        wireContinue();
+      }
     }
   </script>
 </body>
