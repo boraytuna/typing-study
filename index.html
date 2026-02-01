@@ -137,8 +137,20 @@
       pointer-events: none;
     }
 
-    #sentence span {
-      white-space: pre;
+    #sentence {
+      white-space: pre-wrap;
+      /* preserves spaces, allows wrapping */
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.6;
+      font-size: 1rem;
+    }
+
+    #sentence {
+      padding: 10px;
+      border-radius: 8px;
+      background: #fafafa;
+      border: 1px solid #eee;
     }
 
     .ch-ok {
