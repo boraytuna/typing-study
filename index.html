@@ -137,38 +137,49 @@
       pointer-events: none;
     }
 
+    /* Sentence container box (this is what keeps it inside the card on laptop and mobile) */
     #sentence {
-      white-space: pre-wrap;
-      /* preserves spaces, allows wrapping */
-      word-wrap: break-word;
-      overflow-wrap: anywhere;
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 14px 0 10px;
+      padding: 12px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #f9fafb;
       line-height: 1.6;
-      font-size: 1rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
-    #sentence {
-      padding: 10px;
-      border-radius: 8px;
-      background: #fafafa;
-      border: 1px solid #eee;
+    /* Spans should NOT be boxes. They are only for per-character coloring. */
+    #sentence span {
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: transparent;
+      border-radius: 0;
+      white-space: pre-wrap;
     }
 
+    /* Character states */
     .ch-ok {
-      color: #137333;
+      color: #111827;
     }
 
     .ch-bad {
-      color: #b00020;
+      color: #dc2626;
       text-decoration: underline;
     }
 
-    .ch-miss {
-      background: rgba(176, 0, 32, 0.10);
+    .ch-missing {
+      color: #f97316;
+      text-decoration: underline;
     }
 
     .ch-extra {
-      background: rgba(176, 0, 32, 0.10);
-      border-bottom: 2px dotted rgba(176, 0, 32, 0.7);
+      color: #7c3aed;
+      text-decoration: underline;
     }
 
     .ch-hint {
