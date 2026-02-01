@@ -230,6 +230,34 @@
       You can refresh the page at any time to resume your progress.
     </p>
   </section>
+   
+  <section id="s-results" class="card hidden">
+    <h2 class="ok">Your Results</h2>
+    <p class="muted">
+      These charts compare your performance to other participants in your age group.
+      Lower time is better.
+    </p>
+
+    <div class="card" style="padding:12px;margin:12px 0;">
+      <h3 style="margin:0 0 8px 0;">Laptop</h3>
+      <canvas id="chartLaptop" width="640" height="220"
+        style="width:100%;border:1px solid #eee;border-radius:10px;"></canvas>
+      <p id="sumLaptop" class="muted" style="margin:8px 0 0 0;"></p>
+    </div>
+
+    <div class="card" style="padding:12px;margin:12px 0;">
+      <h3 style="margin:0 0 8px 0;">Phone</h3>
+      <canvas id="chartPhone" width="640" height="220"
+        style="width:100%;border:1px solid #eee;border-radius:10px;"></canvas>
+      <p id="sumPhone" class="muted" style="margin:8px 0 0 0;"></p>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button id="btnContinue">Continue</button>
+    </div>
+
+    <p id="resultsWarn" class="muted warn hidden" style="margin-top:10px;"></p>
+  </section>
 
   <section id="s-done" class="card hidden">
     <h2 class="ok">Done ✅</h2>
@@ -283,6 +311,14 @@
     const sBoot = document.getElementById("s-boot");
     const hideBoot = () => sBoot && sBoot.classList.add("hidden");
 
+    const sResults = document.getElementById("s-results");
+    const chartLaptop = document.getElementById("chartLaptop");
+    const chartPhone = document.getElementById("chartPhone");
+    const sumLaptop = document.getElementById("sumLaptop");
+    const sumPhone = document.getElementById("sumPhone");
+    const btnContinue = document.getElementById("btnContinue");
+    const resultsWarn = document.getElementById("resultsWarn");
+
     /*** STATE ***/
     let pid = null, deviceOrder = null, phase = 1;
     let t0 = 0, lastT = 0, rafId = null, frozen = false;
@@ -334,7 +370,7 @@
     // ---- Session token (per PID) ----
     const TOK_KEY = "ts_token";
     const PHASE_KEY = "ts_phase";
-    const ROUND_KEY = "ts_round";
+    const ROUND_KEY = "ts_roundIdx";
 
     function setTok(t) { if (t) localStorage.setItem(TOK_KEY, t); }
     function getTok() { return localStorage.getItem(TOK_KEY) || ""; }
@@ -406,6 +442,13 @@
       pid,
       session_token: getTok(),
       end_iso: new Date().toISOString()
+    });
+
+    // get_comparison_stats (token required)
+    const getComparisonStats = (pid) => post({
+      type: "get_comparison_stats",
+      pid,
+      session_token: getTok()
     });
 
     /*** CONSENT UI ***/
@@ -647,6 +690,137 @@
       }
     });
 
+    function fmtPct(p) {
+      if (!Number.isFinite(p)) return "";
+      return `${Math.round(p)}th percentile`;
+    }
+
+    function drawComparisonChart(canvas, payload) {
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.fillStyle = "black";
+
+      if (!payload || payload.n == null || payload.n < 1 || payload.participant_avg_ms == null) {
+        ctx.fillText("No data available.", 14, 28);
+        return;
+      }
+
+      if (payload.n < 5 || payload.group_p50_ms == null) {
+        ctx.fillText("Not enough comparison data yet.", 14, 28);
+        ctx.fillText(`Your average: ${Math.round(payload.participant_avg_ms)} ms`, 14, 48);
+        return;
+      }
+
+      const padL = 54, padR = 18, padT = 18, padB = 34;
+      const innerW = w - padL - padR;
+      const innerH = h - padT - padB;
+
+      const vals = [
+        payload.group_p25_ms,
+        payload.group_p50_ms,
+        payload.group_p75_ms,
+        payload.participant_avg_ms
+      ].filter(v => Number.isFinite(v));
+
+      const minV = Math.min(...vals);
+      const maxV = Math.max(...vals);
+      const span = Math.max(1, maxV - minV);
+
+      const xFor = (v) => padL + ((v - minV) / span) * innerW;
+      const yMid = padT + innerH / 2;
+
+      // Border
+      ctx.strokeRect(padL, padT, innerW, innerH);
+
+      // IQR band
+      const x25 = xFor(payload.group_p25_ms);
+      const x75 = xFor(payload.group_p75_ms);
+      ctx.fillStyle = "rgba(0,0,0,0.08)";
+      ctx.fillRect(x25, padT + innerH * 0.25, x75 - x25, innerH * 0.5);
+
+      // Median line
+      const x50 = xFor(payload.group_p50_ms);
+      ctx.strokeStyle = "black";
+      ctx.beginPath();
+      ctx.moveTo(x50, padT + innerH * 0.2);
+      ctx.lineTo(x50, padT + innerH * 0.8);
+      ctx.stroke();
+
+      // Participant dot
+      const xp = xFor(payload.participant_avg_ms);
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.arc(xp, yMid, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Labels
+      ctx.fillStyle = "black";
+      ctx.fillText("p25", x25 - 10, h - 10);
+      ctx.fillText("p50", x50 - 10, h - 10);
+      ctx.fillText("p75", x75 - 10, h - 10);
+      ctx.fillText("you", xp - 10, padT + 14);
+
+      // Min max ticks
+      ctx.fillText(String(Math.round(minV)), padL, h - 10);
+      const maxTxt = String(Math.round(maxV));
+      ctx.fillText(maxTxt, w - padR - ctx.measureText(maxTxt).width, h - 10);
+    }
+
+    async function showResultsThenFinish() {
+      stopPoll();
+      hide(sConsent); hide(sHandoff); hide(sTrial); hide(sDone);
+      hideBoot();
+      show(sResults);
+
+      btnContinue.disabled = true;
+      resultsWarn.classList.add("hidden");
+      sumLaptop.textContent = "Loading...";
+      sumPhone.textContent = "Loading...";
+
+      try {
+        const r = await getComparisonStats(pid);
+        if (!r || r.ok === false) throw new Error(r && r.error ? r.error : "stats failed");
+
+        drawComparisonChart(chartLaptop, r.laptop);
+        drawComparisonChart(chartPhone, r.phone);
+
+        if (r.laptop && r.laptop.participant_avg_ms != null) {
+          sumLaptop.textContent = (r.laptop.n >= 5 && r.laptop.percentile != null)
+            ? `You: ${Math.round(r.laptop.participant_avg_ms)} ms, ${fmtPct(r.laptop.percentile)} (n=${r.laptop.n}).`
+            : `You: ${Math.round(r.laptop.participant_avg_ms)} ms (n=${r.laptop.n}).`;
+        } else {
+          sumLaptop.textContent = "No laptop result found for you.";
+        }
+
+        if (r.phone && r.phone.participant_avg_ms != null) {
+          sumPhone.textContent = (r.phone.n >= 5 && r.phone.percentile != null)
+            ? `You: ${Math.round(r.phone.participant_avg_ms)} ms, ${fmtPct(r.phone.percentile)} (n=${r.phone.n}).`
+            : `You: ${Math.round(r.phone.participant_avg_ms)} ms (n=${r.phone.n}).`;
+        } else {
+          sumPhone.textContent = "No phone result found for you.";
+        }
+
+        btnContinue.disabled = false;
+      } catch (e) {
+        resultsWarn.textContent = "Could not load comparison charts. You can still continue.";
+        resultsWarn.classList.remove("hidden");
+        sumLaptop.textContent = "";
+        sumPhone.textContent = "";
+        btnContinue.disabled = false;
+      }
+
+      btnContinue.onclick = async () => {
+        btnContinue.disabled = true;
+        try { await participantEnd(pid); } catch { }
+        clearProgress();
+        clearTok();
+        showDoneAndCycle();
+      };
+    }
+
     /*** TRIAL ***/
     function gotoTrialWithLoading() {
       stopPoll();
@@ -833,11 +1007,9 @@
         }
 
         if (r.next === "done") {
-          // Phase 2 finished → close the loop
-          try { await participantEnd(pid); } catch { }
-          clearProgress()
-          clearTok();
-          showDoneAndCycle();
+          roundIdx = -1;
+          clearProgress();
+          await showResultsThenFinish();
           return;
         }
 
@@ -1031,8 +1203,8 @@
         if (waitPhase === 2 && dev === second && st.phase1_done && !st.phase2_done) {
           stopPoll();
           phase = waitPhase;
-          gotoTrialWithLoading();
           roundIdx = -1; // start Phase 2 with practice
+          gotoTrialWithLoading();
           return;
         }
 
